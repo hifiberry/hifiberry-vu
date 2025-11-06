@@ -18,6 +18,9 @@ import math
 import ctypes
 from datetime import datetime
 
+# Configuration constants
+SHOW_FPS = True  # Set to False to hide FPS display
+
 class AnalogClock:
     def __init__(self, width=720, height=720, clock_diameter=700):
         self.width = width
@@ -50,9 +53,6 @@ class AnalogClock:
         self.minute_hand_width = 4
         self.second_hand_width = 2
         self.center_dot_radius = 8
-        
-        # Display options
-        self.SHOW_FPS = True  # Set to False to hide FPS display
         
         # FPS tracking
         self.frame_count = 0
@@ -282,7 +282,7 @@ class AnalogClock:
         self.draw_filled_circle_fast(self.center_x, self.center_y, self.center_dot_radius, self.center_dot_color)
         
         # Update and draw FPS at 6 o'clock position (if enabled)
-        if self.SHOW_FPS:
+        if SHOW_FPS:
             self.update_fps()
             fps_text = f"{self.current_fps:.1f}"
             # Position text at 6 o'clock inside the clock face
