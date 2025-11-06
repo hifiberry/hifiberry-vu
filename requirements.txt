@@ -1,2 +1,14 @@
-# No external dependencies required
-# All implementations use only Python standard library
+# SDL2-based Implementation Requirements
+# 
+# Installation:
+# 1. Run: sudo ./sdl2/install-sdl2
+# 2. Or manually: pip3 install --break-system-packages PySDL2
+#
+# System packages (installed by install-sdl2):
+# - libsdl2-dev
+# - libsdl2-image-dev
+# - libsdl2-mixer-dev
+# - libsdl2-ttf-dev
+# - libsdl2-gfx-dev
+
+PySDL2>=0.9.17

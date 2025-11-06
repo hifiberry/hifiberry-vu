@@ -1,0 +1,121 @@
+#!/bin/bash
+# SDL2 Installation Script for Debian/Ubuntu
+# Installs SDL2 libraries and Python bindings using system packages
+
+set -e  # Exit on any error
+
+echo "SDL2 Installation for Debian/Ubuntu Systems"
+echo "==========================================="
+echo ""
+
+# Check if running on Debian/Ubuntu
+if ! command -v apt >/dev/null 2>&1; then
+    echo "Error: This script is designed for Debian/Ubuntu systems with apt package manager"
+    exit 1
+fi
+
+# Check if running as root or with sudo
+if [ "$EUID" -ne 0 ]; then
+    echo "This script requires root privileges. Please run with sudo:"
+    echo "  sudo ./install-sdl2"
+    exit 1
+fi
+
+echo "Updating package list..."
+apt update
+
+echo ""
+echo "Installing SDL2 core libraries..."
+apt install -y \
+    libsdl2-dev \
+    libsdl2-2.0-0 \
+    libsdl2-image-dev \
+    libsdl2-image-2.0-0 \
+    libsdl2-mixer-dev \
+    libsdl2-mixer-2.0-0 \
+    libsdl2-ttf-dev \
+    libsdl2-ttf-2.0-0 \
+    libsdl2-gfx-dev \
+    libsdl2-gfx-1.0-0
+
+echo ""
+echo "Installing Python development packages..."
+apt install -y \
+    python3-dev \
+    python3-pip \
+    python3-setuptools \
+    python3-wheel
+
+echo ""
+echo "Installing Python SDL2 bindings..."
+# Try to install via apt first (if available)
+if apt-cache show python3-sdl2 >/dev/null 2>&1; then
+    echo "Installing python3-sdl2 via apt..."
+    apt install -y python3-sdl2
+    
+    # Test if the system package works properly
+    if ! python3 -c "import sdl2; print('SDL2 system package works')" >/dev/null 2>&1; then
+        echo "System package has issues, installing PySDL2 via pip..."
+        pip3 install --break-system-packages PySDL2
+    fi
+else
+    echo "python3-sdl2 not available in repositories, installing via pip..."
+    pip3 install --break-system-packages PySDL2
+fi
+
+echo ""
+echo "Installing additional useful packages..."
+apt install -y \
+    pkg-config \
+    build-essential
+
+echo ""
+echo "Verifying installation..."
+
+# Check SDL2 installation
+if pkg-config --exists sdl2; then
+    SDL2_VERSION=$(pkg-config --modversion sdl2)
+    echo "✅ SDL2 ${SDL2_VERSION} installed successfully"
+else
+    echo "❌ SDL2 installation verification failed"
+    exit 1
+fi
+
+# Check Python bindings
+if python3 -c "import sdl2; print('✅ PySDL2 version:', getattr(sdl2, '__version__', 'system package'))" 2>/dev/null; then
+    echo "✅ Python SDL2 bindings installed successfully"
+else
+    echo "⚠️  Python SDL2 bindings not found, trying pip install..."
+    pip3 install --break-system-packages PySDL2
+    if python3 -c "import sdl2; print('✅ PySDL2 version:', getattr(sdl2, '__version__', 'unknown'))" 2>/dev/null; then
+        echo "✅ Python SDL2 bindings installed via pip"
+    else
+        echo "❌ Failed to install Python SDL2 bindings"
+        exit 1
+    fi
+fi
+
+echo ""
+echo "Installation Summary:"
+echo "===================="
+echo "SDL2 Core Libraries:"
+echo "  - libsdl2-dev (development headers)"
+echo "  - libsdl2-2.0-0 (runtime library)"
+echo "  - libsdl2-image (image loading)"
+echo "  - libsdl2-mixer (audio mixing)"
+echo "  - libsdl2-ttf (TrueType fonts)"
+echo "  - libsdl2-gfx (graphics primitives)"
+echo ""
+echo "Python Bindings:"
+echo "  - PySDL2 (Python SDL2 wrapper)"
+echo ""
+echo "Development Tools:"
+echo "  - pkg-config (for compilation)"
+echo "  - build-essential (compiler toolchain)"
+echo ""
+echo "🎉 SDL2 installation completed successfully!"
+echo ""
+echo "Next steps:"
+echo "  1. Test with: python3 -c \"import sdl2; print('SDL2 ready!')\""
+echo "  2. Check available video drivers: python3 test-sdl2.py"
+echo "  3. Run framebuffer test: python3 ../vinyl_with_sdl2.py"
