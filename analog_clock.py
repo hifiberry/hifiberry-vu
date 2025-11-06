@@ -5,6 +5,7 @@ Features:
 - 700px diameter analog clock on 720x720px screen
 - Hour, minute, and second hands
 - Smooth second hand movement (updates continuously)
+- Optional FPS display at 6 o'clock position (controlled by SHOW_FPS constant)
 - Exit with Ctrl+C or 'q' key
 """
 
@@ -34,10 +35,10 @@ class AnalogClock:
         self.bg_color = (0, 0, 0)           # Black background
         self.face_color = (255, 255, 255)   # White clock face
         self.border_color = (50, 50, 50)    # Dark border
-        self.hour_marks_color = (0, 0, 0)   # Black hour marks
+        self.hour_marks_color = (100, 100, 100)   # Black hour marks
         self.minute_marks_color = (100, 100, 100)  # Gray minute marks
-        self.hour_hand_color = (0, 0, 0)    # Black hour hand
-        self.minute_hand_color = (0, 0, 0)  # Black minute hand
+        self.hour_hand_color = (100, 100, 100)    # Black hour hand
+        self.minute_hand_color = (100, 100, 100)  # Black minute hand
         self.second_hand_color = (255, 0, 0) # Red second hand
         self.center_dot_color = (0, 0, 0)   # Black center dot
         
@@ -50,6 +51,15 @@ class AnalogClock:
         self.second_hand_width = 2
         self.center_dot_radius = 8
         
+        # Display options
+        self.SHOW_FPS = True  # Set to False to hide FPS display
+        
+        # FPS tracking
+        self.frame_count = 0
+        self.fps_start_time = time.time()
+        self.current_fps = 0.0
+        self.fps_update_interval = 1.0  # Update FPS display every second
+    
     def setup_sdl2(self):
         """Initialize SDL2 for framebuffer rendering."""
         # Configure for framebuffer
@@ -125,6 +135,61 @@ class AnalogClock:
         r, g, b = color
         sdl2.SDL_SetRenderDrawColor(self.renderer, r, g, b, 255)
         sdl2.SDL_RenderDrawLine(self.renderer, int(x1), int(y1), int(x2), int(y2))
+    
+    def draw_simple_digit(self, x, y, digit, color, size=3):
+        """Draw a simple bitmap digit."""
+        r, g, b = color
+        sdl2.SDL_SetRenderDrawColor(self.renderer, r, g, b, 255)
+        
+        # Simple 5x7 bitmap patterns for digits 0-9
+        patterns = {
+            '0': ["11111", "10001", "10001", "10001", "10001", "10001", "11111"],
+            '1': ["00100", "01100", "00100", "00100", "00100", "00100", "01110"],
+            '2': ["11111", "00001", "00001", "11111", "10000", "10000", "11111"],
+            '3': ["11111", "00001", "00001", "11111", "00001", "00001", "11111"],
+            '4': ["10001", "10001", "10001", "11111", "00001", "00001", "00001"],
+            '5': ["11111", "10000", "10000", "11111", "00001", "00001", "11111"],
+            '6': ["11111", "10000", "10000", "11111", "10001", "10001", "11111"],
+            '7': ["11111", "00001", "00001", "00001", "00001", "00001", "00001"],
+            '8': ["11111", "10001", "10001", "11111", "10001", "10001", "11111"],
+            '9': ["11111", "10001", "10001", "11111", "00001", "00001", "11111"],
+            '.': ["00000", "00000", "00000", "00000", "00000", "00000", "01100"]
+        }
+        
+        if digit not in patterns:
+            return
+        
+        pattern = patterns[digit]
+        
+        for row, line in enumerate(pattern):
+            for col, pixel in enumerate(line):
+                if pixel == '1':
+                    # Draw a size x size block for each pixel
+                    for dx in range(size):
+                        for dy in range(size):
+                            sdl2.SDL_RenderDrawPoint(self.renderer, 
+                                                   x + col * size + dx, 
+                                                   y + row * size + dy)
+    
+    def draw_text(self, x, y, text, color, size=3):
+        """Draw simple text using bitmap digits."""
+        char_width = 6 * size  # 5 pixels + 1 spacing
+        current_x = x
+        
+        for char in text:
+            self.draw_simple_digit(current_x, y, char, color, size)
+            current_x += char_width
+    
+    def update_fps(self):
+        """Update FPS calculation."""
+        self.frame_count += 1
+        current_time = time.time()
+        elapsed = current_time - self.fps_start_time
+        
+        if elapsed >= self.fps_update_interval:
+            self.current_fps = self.frame_count / elapsed
+            self.frame_count = 0
+            self.fps_start_time = current_time
     
     def draw_clock_face(self):
         """Draw the clock face with hour and minute marks - optimized version."""
@@ -215,6 +280,19 @@ class AnalogClock:
         
         # Draw center dot
         self.draw_filled_circle_fast(self.center_x, self.center_y, self.center_dot_radius, self.center_dot_color)
+        
+        # Update and draw FPS at 6 o'clock position (if enabled)
+        if self.SHOW_FPS:
+            self.update_fps()
+            fps_text = f"{self.current_fps:.1f}"
+            # Position text at 6 o'clock inside the clock face
+            text_width = len(fps_text) * 6 * 3  # 6 pixels per char * size 3
+            text_x = self.center_x - text_width // 2  # Center the text
+            text_y = self.center_y + self.clock_radius - 60  # Inside the clock face at bottom
+            self.draw_text(text_x, text_y, fps_text, (255, 255, 255), size=3)  # White text
+        else:
+            # Still update frame count for potential future use, but don't calculate FPS
+            self.frame_count += 1
     
     def handle_events(self):
         """Handle SDL2 events."""
@@ -233,6 +311,10 @@ class AnalogClock:
         
         print("Analog Clock Started")
         print("Press 'q' or Ctrl+C to exit")
+        
+        # Initialize FPS tracking
+        self.fps_start_time = time.time()
+        self.frame_count = 0
         
         try:
             while self.running:
