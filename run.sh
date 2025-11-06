@@ -21,9 +21,10 @@ echo "Choose an option:"
 echo "1. Test SDL2 installation"
 echo "2. Run SDL2 basic example"
 echo "3. Run analog clock"
-echo "4. Install/Update SDL2"
+echo "4. Run VU meter display"
+echo "5. Install/Update SDL2"
 echo ""
-read -p "Enter choice (1-4): " choice
+read -p "Enter choice (1-5): " choice
 
 case $choice in
     1)
@@ -40,6 +41,11 @@ case $choice in
         python3 analog_clock.py
         ;;
     4)
+        echo "Starting VU meter display..."
+        echo "Press 'q' or Ctrl+C to exit"
+        python3 vu_meter.py
+        ;;
+    5)
         echo "Installing/Updating SDL2..."
         cd sdl2
         sudo ./install-sdl2
