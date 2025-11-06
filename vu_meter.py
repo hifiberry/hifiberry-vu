@@ -33,6 +33,9 @@ CONFIGS = {
         "needle_max_angle": 30,              # Maximum angle in degrees
         "needle_width": 3,                   # Needle thickness in pixels
         "needle_color": (255, 0, 0),         # Red color (R, G, B)
+        
+        # FPS display settings
+        "fps_position_y_percent": 0.80,      # 80% of screen height
     }
 }
 
@@ -41,23 +44,15 @@ NEEDLE_DEFAULT_ANGLE = -30         # Default fixed position in degrees
 DEMO_NEEDLE = True                 # Set to False to disable demo mode
 DEMO_SWEEP_TIME = 2.0              # Time in seconds to go from min to max angle
 
+# FPS display settings (global)
+FPS_ENABLE = True                  # Set to False to disable FPS display
+
 # Select configuration
 CURRENT_CONFIG = "simple"
 CONFIG = CONFIGS[CURRENT_CONFIG]
 
-# Legacy constants for backward compatibility (can be removed later)
-IMAGE_PATH = CONFIG["image_path"]
-NEEDLE_CENTER_X_PERCENT = CONFIG["needle_center_x_percent"]
-NEEDLE_CENTER_Y_PERCENT = CONFIG["needle_center_y_percent"]
-NEEDLE_LENGTH_PERCENT = CONFIG["needle_length_percent"]
-NEEDLE_MIN_ANGLE = CONFIG["needle_min_angle"]
-NEEDLE_MAX_ANGLE = CONFIG["needle_max_angle"]
-NEEDLE_WIDTH = CONFIG["needle_width"]
-NEEDLE_COLOR = CONFIG["needle_color"]
-# NEEDLE_DEFAULT_ANGLE is now defined above with demo settings
-
 # Calculate demo timing automatically based on config and sweep time
-DEMO_ANGLE_RANGE = NEEDLE_MAX_ANGLE - NEEDLE_MIN_ANGLE
+DEMO_ANGLE_RANGE = CONFIG["needle_max_angle"] - CONFIG["needle_min_angle"]
 DEMO_UPDATES_PER_SECOND = 60       # Smooth 60 FPS animation
 DEMO_STEP_SIZE = DEMO_ANGLE_RANGE / (DEMO_SWEEP_TIME * DEMO_UPDATES_PER_SECOND)
 
@@ -72,9 +67,15 @@ class VUMeter:
         self.running = True
         
         # Demo needle state
-        self.current_needle_angle = NEEDLE_MIN_ANGLE
+        self.current_needle_angle = CONFIG["needle_min_angle"]
         self.needle_direction = 1  # 1 for increasing, -1 for decreasing
         self.last_needle_update = 0
+        
+        # FPS tracking
+        self.frame_count = 0
+        self.fps_start_time = time.time()
+        self.current_fps = 0.0
+        self.fps_update_interval = 1.0  # Update FPS display every second
     
     def setup_sdl2(self):
         """Initialize SDL2 for framebuffer rendering."""
@@ -164,14 +165,14 @@ class VUMeter:
             angle_degrees: Angle in degrees (-20 to +20, where 0 is vertical)
         """
         # Clamp angle to valid range
-        angle_degrees = max(NEEDLE_MIN_ANGLE, min(NEEDLE_MAX_ANGLE, angle_degrees))
+        angle_degrees = max(CONFIG["needle_min_angle"], min(CONFIG["needle_max_angle"], angle_degrees))
         
         # Calculate needle center position
-        needle_center_x = int(self.width * NEEDLE_CENTER_X_PERCENT)
-        needle_center_y = int(self.height * NEEDLE_CENTER_Y_PERCENT)
+        needle_center_x = int(self.width * CONFIG["needle_center_x_percent"])
+        needle_center_y = int(self.height * CONFIG["needle_center_y_percent"])
         
         # Calculate needle length
-        needle_length = int(self.height * NEEDLE_LENGTH_PERCENT)
+        needle_length = int(self.height * CONFIG["needle_length_percent"])
         
         # Convert angle to radians (0 degrees = vertical = -90 degrees in math coords)
         # Subtract 90 degrees to make 0 degrees point upward (vertical)
@@ -182,11 +183,11 @@ class VUMeter:
         end_y = int(needle_center_y + needle_length * math.sin(angle_rad))
         
         # Set needle color
-        r, g, b = NEEDLE_COLOR
+        r, g, b = CONFIG["needle_color"]
         sdl2.SDL_SetRenderDrawColor(self.renderer, r, g, b, 255)
         
         # Draw needle with specified thickness
-        for offset in range(-NEEDLE_WIDTH//2, NEEDLE_WIDTH//2 + 1):
+        for offset in range(-CONFIG["needle_width"]//2, CONFIG["needle_width"]//2 + 1):
             # Draw multiple lines to create thickness
             sdl2.SDL_RenderDrawLine(
                 self.renderer,
@@ -224,14 +225,84 @@ class VUMeter:
             self.current_needle_angle += self.needle_direction * DEMO_STEP_SIZE
             
             # Check bounds and reverse direction if needed
-            if self.current_needle_angle >= NEEDLE_MAX_ANGLE:
-                self.current_needle_angle = NEEDLE_MAX_ANGLE
+            if self.current_needle_angle >= CONFIG["needle_max_angle"]:
+                self.current_needle_angle = CONFIG["needle_max_angle"]
                 self.needle_direction = -1  # Start going back
-            elif self.current_needle_angle <= NEEDLE_MIN_ANGLE:
-                self.current_needle_angle = NEEDLE_MIN_ANGLE
+            elif self.current_needle_angle <= CONFIG["needle_min_angle"]:
+                self.current_needle_angle = CONFIG["needle_min_angle"]
                 self.needle_direction = 1   # Start going forward
         
         return self.current_needle_angle
+    
+    def update_fps(self):
+        """Update FPS calculation."""
+        self.frame_count += 1
+        current_time = time.time()
+        elapsed = current_time - self.fps_start_time
+        
+        if elapsed >= self.fps_update_interval:
+            self.current_fps = self.frame_count / elapsed
+            self.frame_count = 0
+            self.fps_start_time = current_time
+    
+    def draw_simple_digit(self, x, y, digit, color, size=3):
+        """Draw a simple bitmap digit."""
+        r, g, b = color
+        sdl2.SDL_SetRenderDrawColor(self.renderer, r, g, b, 255)
+        
+        # Simple 5x7 bitmap patterns for digits 0-9
+        patterns = {
+            '0': ["11111", "10001", "10001", "10001", "10001", "10001", "11111"],
+            '1': ["00100", "01100", "00100", "00100", "00100", "00100", "01110"],
+            '2': ["11111", "00001", "00001", "11111", "10000", "10000", "11111"],
+            '3': ["11111", "00001", "00001", "11111", "00001", "00001", "11111"],
+            '4': ["10001", "10001", "10001", "11111", "00001", "00001", "00001"],
+            '5': ["11111", "10000", "10000", "11111", "00001", "00001", "11111"],
+            '6': ["11111", "10000", "10000", "11111", "10001", "10001", "11111"],
+            '7': ["11111", "00001", "00001", "00001", "00001", "00001", "00001"],
+            '8': ["11111", "10001", "10001", "11111", "10001", "10001", "11111"],
+            '9': ["11111", "10001", "10001", "11111", "00001", "00001", "11111"],
+            '.': ["00000", "00000", "00000", "00000", "00000", "00000", "01100"]
+        }
+        
+        if digit not in patterns:
+            return
+        
+        pattern = patterns[digit]
+        
+        for row, line in enumerate(pattern):
+            for col, pixel in enumerate(line):
+                if pixel == '1':
+                    # Draw a size x size block for each pixel
+                    for dx in range(size):
+                        for dy in range(size):
+                            sdl2.SDL_RenderDrawPoint(self.renderer, 
+                                                   x + col * size + dx, 
+                                                   y + row * size + dy)
+    
+    def draw_text(self, x, y, text, color, size=3):
+        """Draw simple text using bitmap digits."""
+        char_width = 6 * size  # 5 pixels + 1 spacing
+        current_x = x
+        
+        for char in text:
+            self.draw_simple_digit(current_x, y, char, color, size)
+            current_x += char_width
+    
+    def draw_fps_display(self):
+        """Draw the FPS display if enabled."""
+        if not FPS_ENABLE:
+            return
+        
+        self.update_fps()
+        fps_text = f"{self.current_fps:.1f}"
+        
+        # Position text at configured Y position, centered on X
+        text_width = len(fps_text) * 6 * 3  # 6 pixels per char * size 3
+        text_x = self.width // 2 - text_width // 2  # Center horizontally
+        text_y = int(self.height * CONFIG["fps_position_y_percent"])
+        
+        self.draw_text(text_x, text_y, fps_text, (0, 255, 0), size=3)  # Green text
     
     def draw_vu_placeholder(self):
         """Draw a simple VU meter placeholder."""
@@ -323,6 +394,9 @@ class VUMeter:
             # Update and draw needle (demo mode or fixed position)
             needle_angle = self.update_demo_needle()
             self.draw_needle(needle_angle)
+            
+            # Draw FPS display
+            self.draw_fps_display()
         else:
             # Draw placeholder VU meter
             self.draw_vu_placeholder()
@@ -330,6 +404,9 @@ class VUMeter:
             # Update and draw needle (demo mode or fixed position)
             needle_angle = self.update_demo_needle()
             self.draw_needle(needle_angle)
+            
+            # Draw FPS display
+            self.draw_fps_display()
     
     def handle_events(self):
         """Handle SDL2 events."""
@@ -358,7 +435,7 @@ class VUMeter:
             return 1
         
         # Try to load image, but continue even if it fails
-        image_loaded = self.load_image(IMAGE_PATH)
+        image_loaded = self.load_image(CONFIG["image_path"])
         if not image_loaded:
             print("Image loading failed - showing placeholder VU meter")
         
@@ -369,6 +446,10 @@ class VUMeter:
         
         # Initialize demo needle timing
         self.last_needle_update = time.time()
+        
+        # Initialize FPS tracking
+        self.fps_start_time = time.time()
+        self.frame_count = 0
         
         try:
             while self.running:
@@ -395,9 +476,6 @@ class VUMeter:
 def set_config(config_name):
     """Switch to a different configuration."""
     global CURRENT_CONFIG, CONFIG
-    global IMAGE_PATH, NEEDLE_CENTER_X_PERCENT, NEEDLE_CENTER_Y_PERCENT
-    global NEEDLE_LENGTH_PERCENT, NEEDLE_MIN_ANGLE, NEEDLE_MAX_ANGLE
-    global NEEDLE_WIDTH, NEEDLE_COLOR
     
     if config_name not in CONFIGS:
         print(f"Error: Configuration '{config_name}' not found.")
@@ -406,16 +484,6 @@ def set_config(config_name):
     
     CURRENT_CONFIG = config_name
     CONFIG = CONFIGS[config_name]
-    
-    # Update legacy constants (demo settings and default angle remain unchanged)
-    IMAGE_PATH = CONFIG["image_path"]
-    NEEDLE_CENTER_X_PERCENT = CONFIG["needle_center_x_percent"]
-    NEEDLE_CENTER_Y_PERCENT = CONFIG["needle_center_y_percent"]
-    NEEDLE_LENGTH_PERCENT = CONFIG["needle_length_percent"]
-    NEEDLE_MIN_ANGLE = CONFIG["needle_min_angle"]
-    NEEDLE_MAX_ANGLE = CONFIG["needle_max_angle"]
-    NEEDLE_WIDTH = CONFIG["needle_width"]
-    NEEDLE_COLOR = CONFIG["needle_color"]
     
     print(f"Switched to configuration: {config_name}")
     return True
@@ -427,7 +495,9 @@ def main():
     print(f"Configuration: {CURRENT_CONFIG}")
     print(f"Looking for image: {CONFIG['image_path']}")
     if DEMO_NEEDLE:
-        print(f"Demo: {NEEDLE_MIN_ANGLE}° to {NEEDLE_MAX_ANGLE}° in {DEMO_SWEEP_TIME}s ({DEMO_STEP_SIZE:.3f}°/step)")
+        print(f"Demo: {CONFIG['needle_min_angle']}° to {CONFIG['needle_max_angle']}° in {DEMO_SWEEP_TIME}s ({DEMO_STEP_SIZE:.3f}°/step)")
+    if FPS_ENABLE:
+        print(f"FPS display enabled at {CONFIG['fps_position_y_percent']*100}% height")
     print("Exit: Press 'q' or Ctrl+C")
     print()
     
