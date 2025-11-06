@@ -55,12 +55,36 @@ round/
 │   ├── install-sdl2        # Automated installation script
 │   ├── test-sdl2.py        # SDL2 functionality test
 │   └── README.md           # SDL2 documentation
+├── analog_clock.py         # Analog clock application
+├── sdl2_example.py         # Basic SDL2 example
+├── run.sh                  # Main project launcher
 ├── requirements.txt        # Python dependencies
 ├── README.md               # This file
 └── .gitignore             # Git ignore rules
 ```
 
 ## Getting Started
+
+### Quick Start
+
+```bash
+# Run the main launcher
+./run.sh
+
+# Or run applications directly:
+python3 analog_clock.py      # Analog clock with smooth second hand
+python3 sdl2_example.py      # Basic SDL2 test pattern
+python3 sdl2/test-sdl2.py    # SDL2 installation test
+```
+
+### Analog Clock Application
+
+The included analog clock features:
+- **700px diameter** clock on 720x720px screen
+- **Smooth second hand** movement (updates continuously, not just every second)
+- Hour and minute marks with proper proportions
+- Real-time display using system time
+- Exit with 'q' key or Ctrl+C
 
 ### Basic SDL2 Setup for Framebuffer
 
