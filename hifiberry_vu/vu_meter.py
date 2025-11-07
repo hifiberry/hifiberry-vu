@@ -26,14 +26,8 @@ from pathlib import Path
 # Import VU monitoring module
 try:
     from .python_vu import VUMonitor
-    VU_AVAILABLE = True
 except ImportError:
-    try:
-        from python_vu import VUMonitor
-        VU_AVAILABLE = True
-    except ImportError:
-        print("Warning: VU audio monitoring not available (missing python_vu module)")
-        VU_AVAILABLE = False
+    from python_vu import VUMonitor
 
 def get_image_path(filename):
     """Get the full path to an image file in the img directory."""
@@ -240,7 +234,7 @@ class VUMeter:
         
         # VU audio monitoring
         self.vu_monitor = None
-        if VU_MODE == "alsa" and VU_AVAILABLE:
+        if VU_MODE == "alsa":
             self.vu_monitor = VUMonitor(update_rate=VU_UPDATE_RATE)
         
         # VU reading averaging for smooth display
@@ -737,10 +731,7 @@ def main():
     if VU_MODE == "demo":
         print(f"Demo: {CONFIG['needle_min_angle']}° to {CONFIG['needle_max_angle']}° in {DEMO_SWEEP_TIME}s ({DEMO_STEP_SIZE:.3f}°/step)")
     elif VU_MODE == "alsa":
-        if VU_AVAILABLE:
-            print(f"ALSA VU: {VU_CHANNEL} channel, {VU_UPDATE_RATE} updates/sec")
-        else:
-            print("ALSA VU: NOT AVAILABLE (missing dependencies) - falling back to demo mode")
+        print(f"ALSA VU: {VU_CHANNEL} channel, {VU_UPDATE_RATE} updates/sec")
     if FPS_ENABLE:
         print("FPS display enabled (console output)")
     print(f"Display rotation: {ROTATE_ANGLE}°")
