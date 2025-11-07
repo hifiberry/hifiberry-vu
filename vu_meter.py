@@ -20,6 +20,7 @@ import sys
 import math
 import time
 import ctypes
+import argparse
 
 # Import VU monitoring module
 try:
@@ -46,34 +47,121 @@ CONFIGS = {
     }
 }
 
-# VU Mode settings (global)
-VU_MODE = "audio"                  # "demo", "audio", or "fixed"
-VU_CHANNEL = "left"                # "left", "right", or "max" (for audio mode)
-VU_UPDATE_RATE = 10                # VU level updates per second (for audio mode)
+# Default settings (will be overridden by command line arguments)
+DEFAULT_VU_MODE = "alsa"           # "demo" or "alsa"
+DEFAULT_CONFIG = "simple"          # Configuration name
+DEFAULT_ROTATE_ANGLE = 180         # Rotation angle: 0, 90, 180, or 270 degrees
+DEFAULT_VU_CHANNEL = "left"        # "left", "right", "max", or "stereo" (for alsa mode)
+DEFAULT_VU_UPDATE_RATE = 10        # VU level updates per second (for alsa mode)
+DEFAULT_FPS_ENABLE = True          # FPS display
 
-# Demo mode settings (when VU_MODE = "demo")
-NEEDLE_DEFAULT_ANGLE = -30         # Default fixed position in degrees (when VU_MODE = "fixed")
+# Demo mode settings
+NEEDLE_DEFAULT_ANGLE = -30         # Default fixed position in degrees (when mode = "fixed")
 DEMO_SWEEP_TIME = 1.0              # Time in seconds to go from min to max angle
 
-# FPS display settings (global)
-FPS_ENABLE = True                  # Set to False to disable FPS display
+# Global variables (will be set by parse_arguments)
+VU_MODE = DEFAULT_VU_MODE
+CURRENT_CONFIG = DEFAULT_CONFIG
+ROTATE_ANGLE = DEFAULT_ROTATE_ANGLE
+VU_CHANNEL = DEFAULT_VU_CHANNEL
+VU_UPDATE_RATE = DEFAULT_VU_UPDATE_RATE
+FPS_ENABLE = DEFAULT_FPS_ENABLE
+CONFIG = None  # Will be set after argument parsing
 
-# Display rotation (global)
-ROTATE_ANGLE = 180                 # Rotation angle: 0, 90, 180, or 270 degrees
+def parse_arguments():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(
+        description="SDL2 VU Meter Display with ALSA Audio Support",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Available configurations: {}
 
-# Select configuration
-CURRENT_CONFIG = "simple"
-CONFIG = CONFIGS[CURRENT_CONFIG]
+Examples:
+  %(prog)s --mode=demo --config=simple --rotate=180
+  %(prog)s --mode=alsa --config=simple --rotate=0
+  %(prog)s --mode=alsa --channel=right --fps
+        """.format(", ".join(CONFIGS.keys()))
+    )
+    
+    parser.add_argument(
+        "--mode", 
+        choices=["demo", "alsa"], 
+        default=DEFAULT_VU_MODE,
+        help="VU meter mode: 'demo' for animated needle, 'alsa' for real audio input (default: %(default)s)"
+    )
+    
+    parser.add_argument(
+        "--config", 
+        choices=list(CONFIGS.keys()), 
+        default=DEFAULT_CONFIG,
+        help="Configuration to use (default: %(default)s)"
+    )
+    
+    parser.add_argument(
+        "--rotate", 
+        type=int, 
+        choices=[0, 90, 180, 270], 
+        default=DEFAULT_ROTATE_ANGLE,
+        help="Display rotation angle in degrees (default: %(default)s)"
+    )
+    
+    parser.add_argument(
+        "--channel", 
+        choices=["left", "right", "max", "stereo"], 
+        default=DEFAULT_VU_CHANNEL,
+        help="Audio channel for ALSA mode: 'left', 'right', 'max' for maximum of both, or 'stereo' for average of both (default: %(default)s)"
+    )
+    
+    parser.add_argument(
+        "--fps", 
+        action="store_true", 
+        default=DEFAULT_FPS_ENABLE,
+        help="Enable FPS display on console (default: %(default)s)"
+    )
+    
+    parser.add_argument(
+        "--no-fps", 
+        action="store_true",
+        help="Disable FPS display on console"
+    )
+    
+    parser.add_argument(
+        "--list-configs", 
+        action="store_true",
+        help="List available configurations and exit"
+    )
+    
+    args = parser.parse_args()
+    
+    # Handle --no-fps override
+    if args.no_fps:
+        args.fps = False
+    
+    return args
 
-# Calculate demo timing automatically based on config and sweep time (for demo mode)
-if VU_MODE == "demo":
-    DEMO_ANGLE_RANGE = CONFIG["needle_max_angle"] - CONFIG["needle_min_angle"]
-    DEMO_UPDATES_PER_SECOND = 60       # Smooth 60 FPS animation
-    DEMO_STEP_SIZE = DEMO_ANGLE_RANGE / (DEMO_SWEEP_TIME * DEMO_UPDATES_PER_SECOND)
-else:
-    DEMO_ANGLE_RANGE = 0
-    DEMO_UPDATES_PER_SECOND = 60
-    DEMO_STEP_SIZE = 0
+def initialize_settings(args):
+    """Initialize global settings from command line arguments."""
+    global VU_MODE, CURRENT_CONFIG, ROTATE_ANGLE, VU_CHANNEL, VU_UPDATE_RATE, FPS_ENABLE, CONFIG
+    global DEMO_ANGLE_RANGE, DEMO_UPDATES_PER_SECOND, DEMO_STEP_SIZE
+    
+    VU_MODE = args.mode
+    CURRENT_CONFIG = args.config
+    ROTATE_ANGLE = args.rotate
+    VU_CHANNEL = args.channel
+    FPS_ENABLE = args.fps
+    
+    # Set the configuration
+    CONFIG = CONFIGS[CURRENT_CONFIG]
+    
+    # Calculate demo timing automatically based on config and sweep time (for demo mode)
+    if VU_MODE == "demo":
+        DEMO_ANGLE_RANGE = CONFIG["needle_max_angle"] - CONFIG["needle_min_angle"]
+        DEMO_UPDATES_PER_SECOND = 60       # Smooth 60 FPS animation
+        DEMO_STEP_SIZE = DEMO_ANGLE_RANGE / (DEMO_SWEEP_TIME * DEMO_UPDATES_PER_SECOND)
+    else:
+        DEMO_ANGLE_RANGE = 0
+        DEMO_UPDATES_PER_SECOND = 60
+        DEMO_STEP_SIZE = 0
 
 class VUMeter:
     def __init__(self, width=720, height=720):
@@ -92,7 +180,7 @@ class VUMeter:
         
         # VU audio monitoring
         self.vu_monitor = None
-        if VU_MODE == "audio" and VU_AVAILABLE:
+        if VU_MODE == "alsa" and VU_AVAILABLE:
             self.vu_monitor = VUMonitor(update_rate=VU_UPDATE_RATE)
         
         # FPS tracking
@@ -241,10 +329,8 @@ class VUMeter:
         """Update needle angle based on current VU mode."""
         if VU_MODE == "demo":
             return self._update_demo_needle()
-        elif VU_MODE == "audio":
+        elif VU_MODE == "alsa":
             return self._update_audio_needle()
-        elif VU_MODE == "fixed":
-            return NEEDLE_DEFAULT_ANGLE
         else:
             return NEEDLE_DEFAULT_ANGLE
     
@@ -285,6 +371,13 @@ class VUMeter:
             vu_db = right_db
         elif VU_CHANNEL == "max":
             vu_db = max(left_db, right_db)
+        elif VU_CHANNEL == "stereo":
+            # Average the left and right channels (in linear space, then convert back to dB)
+            # Convert dB to linear, average, then back to dB
+            left_linear = 10**(left_db / 20.0) if left_db > -60 else 0
+            right_linear = 10**(right_db / 20.0) if right_db > -60 else 0
+            avg_linear = (left_linear + right_linear) / 2.0
+            vu_db = 20.0 * math.log10(avg_linear) if avg_linear > 0 else -60.0
         else:
             vu_db = left_db  # Default to left
         
@@ -487,11 +580,11 @@ class VUMeter:
         print(f"VU Mode: {VU_MODE}")
         if VU_MODE == "demo":
             print("Demo needle animation enabled")
-        elif VU_MODE == "audio":
+        elif VU_MODE == "alsa":
             if self.vu_monitor:
-                print(f"Audio VU monitoring enabled - {VU_CHANNEL} channel")
+                print(f"ALSA VU monitoring enabled - {VU_CHANNEL} channel")
             else:
-                print("Audio VU monitoring failed - using fixed position")
+                print("ALSA VU monitoring failed - using fixed position")
         print("Press Ctrl+C to exit")
         
         # Initialize demo needle timing
@@ -543,20 +636,35 @@ def set_config(config_name):
 
 def main():
     """Main entry point."""
-    print("SDL2 VU Meter Display with Audio VU Integration")
-    print("===============================================")
+    # Parse command line arguments
+    args = parse_arguments()
+    
+    # Handle --list-configs
+    if args.list_configs:
+        print("Available configurations:")
+        for config_name, config_data in CONFIGS.items():
+            print(f"  {config_name}:")
+            print(f"    Image: {config_data['image_path']}")
+            print(f"    Needle: {config_data['needle_min_angle']}° to {config_data['needle_max_angle']}°")
+            print(f"    Position: {config_data['needle_center_x_percent']*100:.0f}%x, {config_data['needle_center_y_percent']*100:.0f}%y")
+            print()
+        return 0
+    
+    # Initialize settings from arguments
+    initialize_settings(args)
+    
+    print("SDL2 VU Meter Display")
+    print("====================")
     print(f"Configuration: {CURRENT_CONFIG}")
     print(f"Looking for image: {CONFIG['image_path']}")
     print(f"VU Mode: {VU_MODE}")
     if VU_MODE == "demo":
         print(f"Demo: {CONFIG['needle_min_angle']}° to {CONFIG['needle_max_angle']}° in {DEMO_SWEEP_TIME}s ({DEMO_STEP_SIZE:.3f}°/step)")
-    elif VU_MODE == "audio":
+    elif VU_MODE == "alsa":
         if VU_AVAILABLE:
-            print(f"Audio VU: {VU_CHANNEL} channel, {VU_UPDATE_RATE} updates/sec")
+            print(f"ALSA VU: {VU_CHANNEL} channel, {VU_UPDATE_RATE} updates/sec")
         else:
-            print("Audio VU: NOT AVAILABLE (missing dependencies)")
-    elif VU_MODE == "fixed":
-        print(f"Fixed position: {NEEDLE_DEFAULT_ANGLE}°")
+            print("ALSA VU: NOT AVAILABLE (missing dependencies) - falling back to demo mode")
     if FPS_ENABLE:
         print("FPS display enabled (console output)")
     print(f"Display rotation: {ROTATE_ANGLE}°")
