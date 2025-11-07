@@ -35,9 +35,6 @@ CONFIGS = {
         "needle_max_angle": 40,              # Maximum angle in degrees
         "needle_width": 3,                   # Needle thickness in pixels
         "needle_color": (255, 0, 0),         # Red color (R, G, B)
-        
-        # FPS display settings
-        "fps_position_y_percent": 0.80,      # 80% of screen height
     }
 }
 
@@ -47,7 +44,7 @@ DEMO_NEEDLE = True                 # Set to False to disable demo mode
 DEMO_SWEEP_TIME = 1.0              # Time in seconds to go from min to max angle
 
 # FPS display settings (global)
-FPS_ENABLE = False                  # Set to False to disable FPS display
+FPS_ENABLE = True                  # Set to False to disable FPS display
 
 # Display rotation (global)
 ROTATE_ANGLE = 180                 # Rotation angle: 0, 90, 180, or 270 degrees
@@ -244,7 +241,10 @@ class VUMeter:
         return self.current_needle_angle
     
     def update_fps(self):
-        """Update FPS calculation."""
+        """Update FPS calculation and print to console if enabled."""
+        if not FPS_ENABLE:
+            return
+            
         self.frame_count += 1
         current_time = time.time()
         elapsed = current_time - self.fps_start_time
@@ -253,114 +253,10 @@ class VUMeter:
             self.current_fps = self.frame_count / elapsed
             self.frame_count = 0
             self.fps_start_time = current_time
+            # Print FPS to console
+            print(f"FPS: {self.current_fps:.1f}")
     
-    def draw_simple_digit(self, x, y, digit, color, size=3):
-        """Draw a simple bitmap digit."""
-        r, g, b = color
-        sdl2.SDL_SetRenderDrawColor(self.renderer, r, g, b, 255)
-        
-        # Simple 5x7 bitmap patterns for digits 0-9
-        patterns = {
-            '0': ["11111", "10001", "10001", "10001", "10001", "10001", "11111"],
-            '1': ["00100", "01100", "00100", "00100", "00100", "00100", "01110"],
-            '2': ["11111", "00001", "00001", "11111", "10000", "10000", "11111"],
-            '3': ["11111", "00001", "00001", "11111", "00001", "00001", "11111"],
-            '4': ["10001", "10001", "10001", "11111", "00001", "00001", "00001"],
-            '5': ["11111", "10000", "10000", "11111", "00001", "00001", "11111"],
-            '6': ["11111", "10000", "10000", "11111", "10001", "10001", "11111"],
-            '7': ["11111", "00001", "00001", "00001", "00001", "00001", "00001"],
-            '8': ["11111", "10001", "10001", "11111", "10001", "10001", "11111"],
-            '9': ["11111", "10001", "10001", "11111", "00001", "00001", "11111"],
-            '.': ["00000", "00000", "00000", "00000", "00000", "00000", "01100"]
-        }
-        
-        if digit not in patterns:
-            return
-        
-        pattern = patterns[digit]
-        
-        for row, line in enumerate(pattern):
-            for col, pixel in enumerate(line):
-                if pixel == '1':
-                    # Draw a size x size block for each pixel
-                    for dx in range(size):
-                        for dy in range(size):
-                            px = x + col * size + dx
-                            py = y + row * size + dy
-                            # Apply rotation to text pixels based on ROTATE_ANGLE
-                            if ROTATE_ANGLE == 0:
-                                final_x, final_y = px, py
-                            elif ROTATE_ANGLE == 90:
-                                # Rotate 90° around the character center
-                                char_center_x = x + 2.5 * size
-                                char_center_y = y + 3.5 * size  
-                                rel_x = px - char_center_x
-                                rel_y = py - char_center_y
-                                final_x = int(char_center_x - rel_y)
-                                final_y = int(char_center_y + rel_x)
-                            elif ROTATE_ANGLE == 180:
-                                # Rotate 180° around the character center
-                                char_center_x = x + 2.5 * size
-                                char_center_y = y + 3.5 * size
-                                rel_x = px - char_center_x
-                                rel_y = py - char_center_y
-                                final_x = int(char_center_x - rel_x)
-                                final_y = int(char_center_y - rel_y)
-                            elif ROTATE_ANGLE == 270:
-                                # Rotate 270° around the character center
-                                char_center_x = x + 2.5 * size
-                                char_center_y = y + 3.5 * size
-                                rel_x = px - char_center_x
-                                rel_y = py - char_center_y
-                                final_x = int(char_center_x + rel_y)
-                                final_y = int(char_center_y - rel_x)
-                            else:
-                                final_x, final_y = px, py
-                            
-                            sdl2.SDL_RenderDrawPoint(self.renderer, final_x, final_y)
-    
-    def draw_text(self, x, y, text, color, size=3):
-        """Draw simple text using bitmap digits."""
-        char_width = 6 * size  # 5 pixels + 1 spacing
-        current_x = x
-        
-        for char in text:
-            self.draw_simple_digit(current_x, y, char, color, size)
-            current_x += char_width
-    
-    def draw_fps_display(self):
-        """Draw the FPS display if enabled."""
-        if not FPS_ENABLE:
-            return
-        
-        self.update_fps()
-        fps_text = f"{self.current_fps:.1f}"
-        
-        # Calculate position based on rotation
-        text_width = len(fps_text) * 6 * 3  # 6 pixels per char * size 3
-        
-        if ROTATE_ANGLE == 0:
-            # Normal: bottom center
-            text_x = self.width // 2 - text_width // 2
-            text_y = int(self.height * CONFIG["fps_position_y_percent"])
-        elif ROTATE_ANGLE == 90:
-            # 90° rotation: right side, vertically centered
-            text_x = int(self.width * CONFIG["fps_position_y_percent"])
-            text_y = self.height // 2 - (len(fps_text) * 7 * 3) // 2  # Approximate text height
-        elif ROTATE_ANGLE == 180:
-            # 180° rotation: top center
-            text_x = self.width // 2 - text_width // 2
-            text_y = int(self.height * (1.0 - CONFIG["fps_position_y_percent"]))
-        elif ROTATE_ANGLE == 270:
-            # 270° rotation: left side, vertically centered
-            text_x = int(self.width * (1.0 - CONFIG["fps_position_y_percent"]))
-            text_y = self.height // 2 - (len(fps_text) * 7 * 3) // 2  # Approximate text height
-        else:
-            # Default to normal position
-            text_x = self.width // 2 - text_width // 2
-            text_y = int(self.height * CONFIG["fps_position_y_percent"])
-        
-        self.draw_text(text_x, text_y, fps_text, (0, 255, 0), size=3)  # Green text
+
     
     def rotate_coordinates(self, x, y):
         """Rotate coordinates based on ROTATE_ANGLE."""
@@ -475,19 +371,16 @@ class VUMeter:
             # Update and draw needle (demo mode or fixed position)
             needle_angle = self.update_demo_needle()
             self.draw_needle(needle_angle)
-            
-            # Draw FPS display
-            self.draw_fps_display()
         else:
             # Draw placeholder VU meter
             self.draw_vu_placeholder()
             
+            # Draw VU meter image
+            self.draw_vu_image()
+            
             # Update and draw needle (demo mode or fixed position)
             needle_angle = self.update_demo_needle()
             self.draw_needle(needle_angle)
-            
-            # Draw FPS display
-            self.draw_fps_display()
     
     def handle_events(self):
         """Handle SDL2 events."""
@@ -538,6 +431,9 @@ class VUMeter:
                 # Draw VU meter
                 self.draw_vu_meter()
                 
+                # Update FPS tracking
+                self.update_fps()
+                
                 # Present to screen
                 sdl2.SDL_RenderPresent(self.renderer)
                 
@@ -576,7 +472,7 @@ def main():
     if DEMO_NEEDLE:
         print(f"Demo: {CONFIG['needle_min_angle']}° to {CONFIG['needle_max_angle']}° in {DEMO_SWEEP_TIME}s ({DEMO_STEP_SIZE:.3f}°/step)")
     if FPS_ENABLE:
-        print(f"FPS display enabled at {CONFIG['fps_position_y_percent']*100}% height")
+        print("FPS display enabled (console output)")
     print(f"Display rotation: {ROTATE_ANGLE}°")
     print("Exit: Press Ctrl+C")
     print()
