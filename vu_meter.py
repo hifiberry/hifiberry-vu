@@ -77,7 +77,7 @@ class VUMeter:
         self.frame_count = 0
         self.fps_start_time = time.time()
         self.current_fps = 0.0
-        self.fps_update_interval = 1.0  # Update FPS display every second
+        self.fps_update_interval = 1.0  # Update FPS console output every second
     
     def setup_sdl2(self):
         """Initialize SDL2 for framebuffer rendering."""
