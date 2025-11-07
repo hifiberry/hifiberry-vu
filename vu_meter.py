@@ -41,7 +41,7 @@ CONFIGS = {
         "needle_center_y_percent": 0.72,    # 72% of screen height
         "needle_length_percent": 0.50,      # 50% of screen height
         "needle_min_angle": -40,             # Minimum angle in degrees
-        "needle_max_angle": 40,              # Maximum angle in degrees
+        "needle_max_angle": 18,              # Maximum angle in degrees
         "needle_width": 3,                   # Needle thickness in pixels
         "needle_color": (255, 0, 0),         # Red color (R, G, B)
     }
@@ -53,6 +53,7 @@ DEFAULT_CONFIG = "simple"          # Configuration name
 DEFAULT_ROTATE_ANGLE = 180         # Rotation angle: 0, 90, 180, or 270 degrees
 DEFAULT_VU_CHANNEL = "left"        # "left", "right", "max", or "stereo" (for alsa mode)
 DEFAULT_VU_UPDATE_RATE = 30        # VU level updates per second (for alsa mode)
+DEFAULT_AVERAGE_READINGS = 5       # Number of readings to average for smoother display
 DEFAULT_FPS_ENABLE = True          # FPS display
 
 # Demo mode settings
@@ -65,6 +66,7 @@ CURRENT_CONFIG = DEFAULT_CONFIG
 ROTATE_ANGLE = DEFAULT_ROTATE_ANGLE
 VU_CHANNEL = DEFAULT_VU_CHANNEL
 VU_UPDATE_RATE = DEFAULT_VU_UPDATE_RATE
+AVERAGE_READINGS = DEFAULT_AVERAGE_READINGS
 FPS_ENABLE = DEFAULT_FPS_ENABLE
 CONFIG = None  # Will be set after argument parsing
 
@@ -133,6 +135,13 @@ Examples:
     )
     
     parser.add_argument(
+        "--average-readings", 
+        type=int, 
+        default=DEFAULT_AVERAGE_READINGS,
+        help="Number of VU readings to average for smoother display (default: %(default)s)"
+    )
+    
+    parser.add_argument(
         "--list-configs", 
         action="store_true",
         help="List available configurations and exit"
@@ -148,7 +157,7 @@ Examples:
 
 def initialize_settings(args):
     """Initialize global settings from command line arguments."""
-    global VU_MODE, CURRENT_CONFIG, ROTATE_ANGLE, VU_CHANNEL, VU_UPDATE_RATE, FPS_ENABLE, CONFIG
+    global VU_MODE, CURRENT_CONFIG, ROTATE_ANGLE, VU_CHANNEL, VU_UPDATE_RATE, AVERAGE_READINGS, FPS_ENABLE, CONFIG
     global DEMO_ANGLE_RANGE, DEMO_UPDATES_PER_SECOND, DEMO_STEP_SIZE
     
     VU_MODE = args.mode
@@ -156,6 +165,7 @@ def initialize_settings(args):
     ROTATE_ANGLE = args.rotate
     VU_CHANNEL = args.channel
     VU_UPDATE_RATE = args.update_rate
+    AVERAGE_READINGS = args.average_readings
     FPS_ENABLE = args.fps
     
     # Set the configuration
@@ -190,6 +200,10 @@ class VUMeter:
         self.vu_monitor = None
         if VU_MODE == "alsa" and VU_AVAILABLE:
             self.vu_monitor = VUMonitor(update_rate=VU_UPDATE_RATE)
+        
+        # VU reading averaging for smooth display
+        from collections import deque
+        self.vu_readings_buffer = deque(maxlen=AVERAGE_READINGS)
         
         # FPS tracking
         self.frame_count = 0
@@ -389,11 +403,20 @@ class VUMeter:
         else:
             vu_db = left_db  # Default to left
         
-        # Convert VU dB level to needle angle
+        # Add current reading to buffer for averaging
+        self.vu_readings_buffer.append(vu_db)
+        
+        # Calculate average of recent readings
+        if len(self.vu_readings_buffer) > 0:
+            avg_vu_db = sum(self.vu_readings_buffer) / len(self.vu_readings_buffer)
+        else:
+            avg_vu_db = vu_db
+        
+        # Convert averaged VU dB level to needle angle
         # VU range: -60 dB to +6 dB
         # Needle range: needle_min_angle to needle_max_angle
         vu_range = 6.0 - (-60.0)  # Total VU range in dB
-        vu_normalized = (vu_db - (-60.0)) / vu_range  # Normalize to 0.0-1.0
+        vu_normalized = (avg_vu_db - (-60.0)) / vu_range  # Normalize to 0.0-1.0
         vu_normalized = max(0.0, min(1.0, vu_normalized))  # Clamp
         
         # Map to needle angle range
