@@ -13,7 +13,7 @@ long_description = (this_directory / "README.md").read_text() if (this_directory
 # Read version from package
 version = {}
 with open("hifiberry_vu/__init__.py") as fp:
-    exec(fp.read(), version)
+    exec(fp.read(), version, version)
 
 setup(
     name="hifiberry-vu",
