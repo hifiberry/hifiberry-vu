@@ -69,7 +69,7 @@ CONFIGS = {
         "clip_detector_x_percent": 0.85,     # X position (85% of screen width)
         "clip_detector_y_percent": 0.5,     # Y position (50% of screen height)
         "clip_detector_radius": 15,          # Radius in pixels
-        "clip_detector_threshold_db": 0.0,   # dB threshold for clipping
+        "clip_detector_threshold_db": -1.0,   # dB threshold for clipping
         "clip_detector_color_off": (30, 30, 30),  # Dark gray when not clipping
         "clip_detector_color_on": (255, 0, 0),    # Red when clipping
     },
@@ -95,7 +95,7 @@ CONFIGS = {
         "clip_detector_x_percent": 0.85,     # X position (85% of screen width)
         "clip_detector_y_percent": 0.5,     # Y position (50% of screen height)
         "clip_detector_radius": 15,          # Radius in pixels
-        "clip_detector_threshold_db": 0.0,   # dB threshold for clipping
+        "clip_detector_threshold_db": -1.0,   # dB threshold for clipping
         "clip_detector_color_off": (30, 30, 30),  # Dark gray when not clipping
         "clip_detector_color_on": (255, 0, 0),    # Red when clipping
     }
