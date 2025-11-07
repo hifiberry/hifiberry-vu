@@ -8,7 +8,7 @@ Features:
 - Needle range: -30° to +30° (0° is vertical)
 - Demo mode: Animates needle min to max in 1 second
 - Display rotation support (0°, 90°, 180°, 270°) - currently 180°
-- FPS display at configurable position
+- FPS monitoring via console output
 - Configuration system with predefined settings (currently: "simple")
 - Exit with Ctrl+C only
 """
@@ -374,9 +374,6 @@ class VUMeter:
         else:
             # Draw placeholder VU meter
             self.draw_vu_placeholder()
-            
-            # Draw VU meter image
-            self.draw_vu_image()
             
             # Update and draw needle (demo mode or fixed position)
             needle_angle = self.update_demo_needle()
