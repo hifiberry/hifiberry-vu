@@ -21,6 +21,14 @@ import math
 import time
 import ctypes
 
+# Import VU monitoring module
+try:
+    from python_vu import VUMonitor
+    VU_AVAILABLE = True
+except ImportError:
+    print("Warning: VU audio monitoring not available (missing python_vu module)")
+    VU_AVAILABLE = False
+
 # Configuration constants
 CONFIGS = {
     "simple": {
@@ -38,9 +46,13 @@ CONFIGS = {
     }
 }
 
-# Demo mode settings (separate from config)
-NEEDLE_DEFAULT_ANGLE = -30         # Default fixed position in degrees
-DEMO_NEEDLE = True                 # Set to False to disable demo mode
+# VU Mode settings (global)
+VU_MODE = "audio"                  # "demo", "audio", or "fixed"
+VU_CHANNEL = "left"                # "left", "right", or "max" (for audio mode)
+VU_UPDATE_RATE = 10                # VU level updates per second (for audio mode)
+
+# Demo mode settings (when VU_MODE = "demo")
+NEEDLE_DEFAULT_ANGLE = -30         # Default fixed position in degrees (when VU_MODE = "fixed")
 DEMO_SWEEP_TIME = 1.0              # Time in seconds to go from min to max angle
 
 # FPS display settings (global)
@@ -53,10 +65,15 @@ ROTATE_ANGLE = 180                 # Rotation angle: 0, 90, 180, or 270 degrees
 CURRENT_CONFIG = "simple"
 CONFIG = CONFIGS[CURRENT_CONFIG]
 
-# Calculate demo timing automatically based on config and sweep time
-DEMO_ANGLE_RANGE = CONFIG["needle_max_angle"] - CONFIG["needle_min_angle"]
-DEMO_UPDATES_PER_SECOND = 60       # Smooth 60 FPS animation
-DEMO_STEP_SIZE = DEMO_ANGLE_RANGE / (DEMO_SWEEP_TIME * DEMO_UPDATES_PER_SECOND)
+# Calculate demo timing automatically based on config and sweep time (for demo mode)
+if VU_MODE == "demo":
+    DEMO_ANGLE_RANGE = CONFIG["needle_max_angle"] - CONFIG["needle_min_angle"]
+    DEMO_UPDATES_PER_SECOND = 60       # Smooth 60 FPS animation
+    DEMO_STEP_SIZE = DEMO_ANGLE_RANGE / (DEMO_SWEEP_TIME * DEMO_UPDATES_PER_SECOND)
+else:
+    DEMO_ANGLE_RANGE = 0
+    DEMO_UPDATES_PER_SECOND = 60
+    DEMO_STEP_SIZE = 0
 
 class VUMeter:
     def __init__(self, width=720, height=720):
@@ -72,6 +89,11 @@ class VUMeter:
         self.current_needle_angle = CONFIG["needle_min_angle"]
         self.needle_direction = 1  # 1 for increasing, -1 for decreasing
         self.last_needle_update = 0
+        
+        # VU audio monitoring
+        self.vu_monitor = None
+        if VU_MODE == "audio" and VU_AVAILABLE:
+            self.vu_monitor = VUMonitor(update_rate=VU_UPDATE_RATE)
         
         # FPS tracking
         self.frame_count = 0
@@ -215,11 +237,19 @@ class VUMeter:
                                            needle_center_x + dx, 
                                            needle_center_y + dy)
     
-    def update_demo_needle(self):
-        """Update the demo needle position for animation."""
-        if not DEMO_NEEDLE:
+    def update_needle_angle(self):
+        """Update needle angle based on current VU mode."""
+        if VU_MODE == "demo":
+            return self._update_demo_needle()
+        elif VU_MODE == "audio":
+            return self._update_audio_needle()
+        elif VU_MODE == "fixed":
             return NEEDLE_DEFAULT_ANGLE
-        
+        else:
+            return NEEDLE_DEFAULT_ANGLE
+    
+    def _update_demo_needle(self):
+        """Update the demo needle position for animation."""
         current_time = time.time()
         
         # Check if it's time to update (based on DEMO_UPDATES_PER_SECOND)
@@ -239,6 +269,37 @@ class VUMeter:
                 self.needle_direction = 1   # Start going forward
         
         return self.current_needle_angle
+    
+    def _update_audio_needle(self):
+        """Update needle position based on audio VU levels."""
+        if not self.vu_monitor or not self.vu_monitor.is_running():
+            return NEEDLE_DEFAULT_ANGLE
+        
+        # Get VU levels from audio monitor
+        left_db, right_db = self.vu_monitor.get_vu_levels()
+        
+        # Select channel based on VU_CHANNEL setting
+        if VU_CHANNEL == "left":
+            vu_db = left_db
+        elif VU_CHANNEL == "right":
+            vu_db = right_db
+        elif VU_CHANNEL == "max":
+            vu_db = max(left_db, right_db)
+        else:
+            vu_db = left_db  # Default to left
+        
+        # Convert VU dB level to needle angle
+        # VU range: -60 dB to +6 dB
+        # Needle range: needle_min_angle to needle_max_angle
+        vu_range = 6.0 - (-60.0)  # Total VU range in dB
+        vu_normalized = (vu_db - (-60.0)) / vu_range  # Normalize to 0.0-1.0
+        vu_normalized = max(0.0, min(1.0, vu_normalized))  # Clamp
+        
+        # Map to needle angle range
+        angle_range = CONFIG["needle_max_angle"] - CONFIG["needle_min_angle"]
+        needle_angle = CONFIG["needle_min_angle"] + (vu_normalized * angle_range)
+        
+        return needle_angle
     
     def update_fps(self):
         """Update FPS calculation and print to console if enabled."""
@@ -368,15 +429,15 @@ class VUMeter:
                 sdl2.SDL_FLIP_NONE  # No flipping
             )
             
-            # Update and draw needle (demo mode or fixed position)
-            needle_angle = self.update_demo_needle()
+            # Update and draw needle (based on VU mode)
+            needle_angle = self.update_needle_angle()
             self.draw_needle(needle_angle)
         else:
             # Draw placeholder VU meter
             self.draw_vu_placeholder()
             
-            # Update and draw needle (demo mode or fixed position)
-            needle_angle = self.update_demo_needle()
+            # Update and draw needle (based on VU mode)
+            needle_angle = self.update_needle_angle()
             self.draw_needle(needle_angle)
     
     def handle_events(self):
@@ -388,7 +449,13 @@ class VUMeter:
             # Removed 'q' key exit - only Ctrl+C supported
     
     def cleanup(self):
-        """Clean up SDL2 resources."""
+        """Clean up SDL2 and VU monitor resources."""
+        # Stop VU monitor
+        if self.vu_monitor:
+            self.vu_monitor.stop()
+            self.vu_monitor = None
+        
+        # Clean up SDL2 resources
         if self.texture:
             sdl2.SDL_DestroyTexture(self.texture)
         if self.renderer:
@@ -408,9 +475,23 @@ class VUMeter:
         if not image_loaded:
             print("Image loading failed - showing placeholder VU meter")
         
+        # Start VU audio monitoring if enabled
+        if self.vu_monitor:
+            if self.vu_monitor.start():
+                print(f"VU audio monitoring started - {VU_CHANNEL} channel")
+            else:
+                print("Failed to start VU audio monitoring - falling back to demo mode")
+                self.vu_monitor = None
+        
         print("VU Meter Display Started")
-        if DEMO_NEEDLE:
+        print(f"VU Mode: {VU_MODE}")
+        if VU_MODE == "demo":
             print("Demo needle animation enabled")
+        elif VU_MODE == "audio":
+            if self.vu_monitor:
+                print(f"Audio VU monitoring enabled - {VU_CHANNEL} channel")
+            else:
+                print("Audio VU monitoring failed - using fixed position")
         print("Press Ctrl+C to exit")
         
         # Initialize demo needle timing
@@ -462,12 +543,20 @@ def set_config(config_name):
 
 def main():
     """Main entry point."""
-    print("SDL2 VU Meter Display")
-    print("====================")
+    print("SDL2 VU Meter Display with Audio VU Integration")
+    print("===============================================")
     print(f"Configuration: {CURRENT_CONFIG}")
     print(f"Looking for image: {CONFIG['image_path']}")
-    if DEMO_NEEDLE:
+    print(f"VU Mode: {VU_MODE}")
+    if VU_MODE == "demo":
         print(f"Demo: {CONFIG['needle_min_angle']}° to {CONFIG['needle_max_angle']}° in {DEMO_SWEEP_TIME}s ({DEMO_STEP_SIZE:.3f}°/step)")
+    elif VU_MODE == "audio":
+        if VU_AVAILABLE:
+            print(f"Audio VU: {VU_CHANNEL} channel, {VU_UPDATE_RATE} updates/sec")
+        else:
+            print("Audio VU: NOT AVAILABLE (missing dependencies)")
+    elif VU_MODE == "fixed":
+        print(f"Fixed position: {NEEDLE_DEFAULT_ANGLE}°")
     if FPS_ENABLE:
         print("FPS display enabled (console output)")
     print(f"Display rotation: {ROTATE_ANGLE}°")
