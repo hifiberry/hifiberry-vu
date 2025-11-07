@@ -1,0 +1,111 @@
+#!/bin/bash
+# HiFiBerry VU Meter - Dependency Installation Script
+# Installs all required system and Python dependencies
+
+set -e  # Exit on any error
+
+echo "HiFiBerry VU Meter - Dependency Installation"
+echo "============================================"
+echo ""
+
+# Check if running on Debian/Ubuntu
+if ! command -v apt >/dev/null 2>&1; then
+    echo "Error: This script is designed for Debian/Ubuntu systems with apt package manager"
+    echo "For other distributions, please install the following manually:"
+    echo "  - SDL2 development libraries"
+    echo "  - PortAudio development libraries"
+    echo "  - Python development headers"
+    exit 1
+fi
+
+# Check if running as root or with sudo
+if [ "$EUID" -ne 0 ]; then
+    echo "This script requires root privileges. Please run with sudo:"
+    echo "  sudo ./install-dependencies"
+    exit 1
+fi
+
+echo "Step 1: Updating package list..."
+apt update
+
+echo ""
+echo "Step 2: Installing PortAudio libraries..."
+echo "PortAudio is required for PyAudio (audio I/O)"
+apt install -y \
+    portaudio19-dev \
+    libportaudio2
+
+echo ""
+echo "Step 3: Installing SDL2 libraries..."
+echo "Calling install-sdl2 script..."
+echo ""
+
+# Get the directory where this script is located
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+# Make install-sdl2 executable if it isn't already
+chmod +x "${SCRIPT_DIR}/sdl2/install-sdl2"
+
+# Run the SDL2 installation script
+"${SCRIPT_DIR}/sdl2/install-sdl2"
+
+echo ""
+echo "Step 4: Installing additional system dependencies..."
+apt install -y \
+    libasound2-dev \
+    alsa-utils
+
+echo ""
+echo "Step 5: Verifying installations..."
+
+# Check PortAudio
+if pkg-config --exists portaudio-2.0; then
+    PORTAUDIO_VERSION=$(pkg-config --modversion portaudio-2.0)
+    echo "✅ PortAudio ${PORTAUDIO_VERSION} installed successfully"
+else
+    echo "⚠️  PortAudio installation could not be verified via pkg-config"
+    if [ -f /usr/include/portaudio.h ] || [ -f /usr/local/include/portaudio.h ]; then
+        echo "✅ PortAudio headers found"
+    else
+        echo "❌ PortAudio headers not found"
+        exit 1
+    fi
+fi
+
+# Check ALSA
+if pkg-config --exists alsa; then
+    ALSA_VERSION=$(pkg-config --modversion alsa)
+    echo "✅ ALSA ${ALSA_VERSION} installed successfully"
+else
+    echo "⚠️  ALSA installation could not be verified"
+fi
+
+# Check SDL2 (already verified by install-sdl2, but double-check)
+if pkg-config --exists sdl2; then
+    SDL2_VERSION=$(pkg-config --modversion sdl2)
+    echo "✅ SDL2 ${SDL2_VERSION} ready"
+else
+    echo "❌ SDL2 installation verification failed"
+    exit 1
+fi
+
+echo ""
+echo "Installation Summary:"
+echo "===================="
+echo "System Libraries Installed:"
+echo "  ✅ SDL2 Core Libraries (graphics/display)"
+echo "  ✅ PortAudio (audio I/O)"
+echo "  ✅ ALSA (Linux audio system)"
+echo ""
+echo "🎉 All dependencies installed successfully!"
+echo ""
+echo "Next steps:"
+echo "  1. Install the HiFiBerry VU package:"
+echo "     pip3 install --break-system-packages -e ."
+echo ""
+echo "  2. Test the installation:"
+echo "     python3 -c \"import sdl2; import pyaudio; import alsaaudio; print('All imports successful!')\""
+echo ""
+echo "  3. Run the VU meter:"
+echo "     hifiberry-vu"
+echo ""
