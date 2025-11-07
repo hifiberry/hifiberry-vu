@@ -44,6 +44,10 @@ CONFIGS = {
         "needle_max_angle": 18,              # Maximum angle in degrees
         "needle_width": 3,                   # Needle thickness in pixels
         "needle_color": (255, 0, 0),         # Red color (R, G, B)
+        
+        # VU level mapping
+        "min_db": -20,                       # Minimum dB level for needle display
+        "max_db": 6,                         # Maximum dB level for needle display
     }
 }
 
@@ -396,10 +400,11 @@ class VUMeter:
         elif VU_CHANNEL == "stereo":
             # Average the left and right channels (in linear space, then convert back to dB)
             # Convert dB to linear, average, then back to dB
-            left_linear = 10**(left_db / 20.0) if left_db > -60 else 0
-            right_linear = 10**(right_db / 20.0) if right_db > -60 else 0
+            min_db_threshold = CONFIG["min_db"]
+            left_linear = 10**(left_db / 20.0) if left_db > min_db_threshold else 0
+            right_linear = 10**(right_db / 20.0) if right_db > min_db_threshold else 0
             avg_linear = (left_linear + right_linear) / 2.0
-            vu_db = 20.0 * math.log10(avg_linear) if avg_linear > 0 else -60.0
+            vu_db = 20.0 * math.log10(avg_linear) if avg_linear > 0 else min_db_threshold
         else:
             vu_db = left_db  # Default to left
         
@@ -412,11 +417,13 @@ class VUMeter:
         else:
             avg_vu_db = vu_db
         
-        # Convert averaged VU dB level to needle angle
-        # VU range: -60 dB to +6 dB
+        # Convert averaged VU dB level to needle angle using configurable dB range
+        # VU range: min_db to max_db (from configuration)
         # Needle range: needle_min_angle to needle_max_angle
-        vu_range = 6.0 - (-60.0)  # Total VU range in dB
-        vu_normalized = (avg_vu_db - (-60.0)) / vu_range  # Normalize to 0.0-1.0
+        min_db = CONFIG["min_db"]
+        max_db = CONFIG["max_db"]
+        vu_range = max_db - min_db  # Total VU range in dB
+        vu_normalized = (avg_vu_db - min_db) / vu_range  # Normalize to 0.0-1.0
         vu_normalized = max(0.0, min(1.0, vu_normalized))  # Clamp
         
         # Map to needle angle range
