@@ -78,6 +78,7 @@ class VUMonitor:
         # VU level storage
         self.left_vu_db = -60.0   # Start at minimum level
         self.right_vu_db = -60.0  # Start at minimum level
+        self.max_db = -60.0       # Maximum value in latest update period
         
         # Audio buffer for VU calculation
         self.audio_buffer = deque(maxlen=int(sample_rate * 0.3))  # 300ms buffer
@@ -230,6 +231,10 @@ class VUMonitor:
         # Convert to dB (VU scale)
         self.left_vu_db = self._rms_to_db(left_rms)
         self.right_vu_db = self._rms_to_db(right_rms)
+        
+        # Calculate maximum absolute value in the update period
+        max_amplitude = np.max(np.abs(audio_data)) if len(audio_data) > 0 else 0
+        self.max_db = self._rms_to_db(max_amplitude)
     
     def _rms_to_db(self, rms_value):
         """Convert RMS value to dB scale."""
@@ -251,6 +256,19 @@ class VUMonitor:
         """
         with self.lock:
             return self.left_vu_db, self.right_vu_db
+    
+    def get_max_db(self):
+        """
+        Get maximum dB level in the latest update period.
+        
+        This represents the peak amplitude (not RMS) in the most recent
+        audio buffer update, useful for peak detection and clip indicators.
+        
+        Returns:
+            float: Maximum dB level (-60 to +6 dB range)
+        """
+        with self.lock:
+            return self.max_db
     
     def get_vu_levels_normalized(self):
         """

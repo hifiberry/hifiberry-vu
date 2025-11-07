@@ -63,6 +63,15 @@ CONFIGS = {
         # VU level mapping
         "min_db": -20,                       # Minimum dB level for needle display
         "max_db": 6,                         # Maximum dB level for needle display
+        
+        # Clipping detector settings
+        "clip_detector_enabled": True,       # Enable clipping detector
+        "clip_detector_x_percent": 0.85,     # X position (85% of screen width)
+        "clip_detector_y_percent": 0.5,     # Y position (50% of screen height)
+        "clip_detector_radius": 15,          # Radius in pixels
+        "clip_detector_threshold_db": 0.0,   # dB threshold for clipping
+        "clip_detector_color_off": (30, 30, 30),  # Dark gray when not clipping
+        "clip_detector_color_on": (255, 0, 0),    # Red when clipping
     },
     "simple2": {
         # Image settings
@@ -80,6 +89,15 @@ CONFIGS = {
         # VU level mapping
         "min_db": -20,                       # Minimum dB level for needle display
         "max_db": 6,                         # Maximum dB level for needle display
+        
+        # Clipping detector settings
+        "clip_detector_enabled": True,       # Enable clipping detector
+        "clip_detector_x_percent": 0.85,     # X position (85% of screen width)
+        "clip_detector_y_percent": 0.5,     # Y position (50% of screen height)
+        "clip_detector_radius": 15,          # Radius in pixels
+        "clip_detector_threshold_db": 0.0,   # dB threshold for clipping
+        "clip_detector_color_off": (30, 30, 30),  # Dark gray when not clipping
+        "clip_detector_color_on": (255, 0, 0),    # Red when clipping
     }
 }
 
@@ -327,6 +345,47 @@ class VUMeter:
         except Exception as e:
             print(f"Error loading image: {e}")
             return False
+    
+    def draw_clip_detector(self):
+        """Draw the clipping detector indicator."""
+        if not CONFIG.get("clip_detector_enabled", False):
+            return
+        
+        # Only draw if we have a VU monitor running
+        if not self.vu_monitor or not self.vu_monitor.is_running():
+            return
+        
+        # Get max dB level
+        max_db = self.vu_monitor.get_max_db()
+        
+        # Determine if clipping is occurring
+        threshold = CONFIG.get("clip_detector_threshold_db", 0.0)
+        is_clipping = max_db >= threshold
+        
+        # Select color based on clipping state
+        if is_clipping:
+            r, g, b = CONFIG.get("clip_detector_color_on", (255, 0, 0))
+        else:
+            r, g, b = CONFIG.get("clip_detector_color_off", (30, 30, 30))
+        
+        # Calculate position
+        center_x = int(self.width * CONFIG.get("clip_detector_x_percent", 0.85))
+        center_y = int(self.height * CONFIG.get("clip_detector_y_percent", 0.15))
+        radius = CONFIG.get("clip_detector_radius", 15)
+        
+        # Apply rotation to coordinates
+        center_x, center_y = self.rotate_coordinates(center_x, center_y)
+        
+        # Set color
+        sdl2.SDL_SetRenderDrawColor(self.renderer, r, g, b, 255)
+        
+        # Draw filled circle using midpoint circle algorithm
+        for dy in range(-radius, radius + 1):
+            for dx in range(-radius, radius + 1):
+                if dx*dx + dy*dy <= radius*radius:
+                    sdl2.SDL_RenderDrawPoint(self.renderer, 
+                                           center_x + dx, 
+                                           center_y + dy)
     
     def draw_needle(self, angle_degrees):
         """Draw the VU meter needle at the specified angle.
@@ -595,6 +654,9 @@ class VUMeter:
             # Update and draw needle (based on VU mode)
             needle_angle = self.update_needle_angle()
             self.draw_needle(needle_angle)
+            
+            # Draw clipping detector
+            self.draw_clip_detector()
         else:
             # Draw placeholder VU meter
             self.draw_vu_placeholder()
@@ -602,6 +664,9 @@ class VUMeter:
             # Update and draw needle (based on VU mode)
             needle_angle = self.update_needle_angle()
             self.draw_needle(needle_angle)
+            
+            # Draw clipping detector
+            self.draw_clip_detector()
     
     def handle_events(self):
         """Handle SDL2 events."""
