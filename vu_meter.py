@@ -2,7 +2,7 @@
 """
 VU Meter Display Application using SDL2
 Features:
-- Displays vu.png image on 720x720px screen
+- Displays simple-vu.png image on 720x720px screen
 - Overlay needle display at configurable position
 - Needle positioned at 50%x, 72%y with 50% height length
 - Needle range: -30° to +30° (0° is vertical)
@@ -34,13 +34,13 @@ except ImportError:
 CONFIGS = {
     "simple": {
         # Image settings
-        "image_path": "vu.png",
+        "image_path": "simple-vu.png",
         
         # Needle position and appearance
         "needle_center_x_percent": 0.50,    # 50% of screen width
         "needle_center_y_percent": 0.72,    # 72% of screen height
         "needle_length_percent": 0.50,      # 50% of screen height
-        "needle_min_angle": -40,             # Minimum angle in degrees
+        "needle_min_angle": -35,             # Minimum angle in degrees
         "needle_max_angle": 18,              # Maximum angle in degrees
         "needle_width": 3,                   # Needle thickness in pixels
         "needle_color": (255, 0, 0),         # Red color (R, G, B)
