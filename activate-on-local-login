@@ -1,0 +1,200 @@
+#!/bin/bash
+"""
+HiFiBerry VU Meter - Auto-start on Local Login
+==============================================
+
+This script configures the VU meter to start automatically when a user logs in
+locally (console/TTY/autologin), but NOT on remote sessions like SSH.
+
+Usage:
+    ./activate-on-local-login [--help] [--remove] [--check]
+
+Options:
+    --help      Show this help message
+    --remove    Remove auto-start configuration
+    --check     Check current configuration status
+
+The script adds a check to ~/.profile that detects local login sessions and
+starts the VU meter with default settings.
+"""
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VU_METER_PATH="$SCRIPT_DIR"
+PROFILE_FILE="$HOME/.profile"
+MARKER_START="# HiFiBerry VU Meter - Auto-start on local login"
+MARKER_END="# End HiFiBerry VU Meter auto-start"
+
+show_help() {
+    echo "HiFiBerry VU Meter - Auto-start on Local Login"
+    echo "=============================================="
+    echo
+    echo "Configures the VU meter to start automatically on local login sessions only."
+    echo "Remote sessions (SSH, network) will NOT start the VU meter."
+    echo
+    echo "Usage:"
+    echo "    ./activate-on-local-login [options]"
+    echo
+    echo "Options:"
+    echo "    --help      Show this help message"
+    echo "    --remove    Remove auto-start configuration"
+    echo "    --check     Check current configuration status"
+    echo
+    echo "Default VU Meter Settings:"
+    echo "    Mode: ALSA audio monitoring"
+    echo "    Channel: Stereo (average of left/right)"
+    echo "    Update Rate: 30 Hz"
+    echo "    Display: 180° rotation"
+    echo "    FPS: Disabled"
+    echo
+    echo "Detection Logic:"
+    echo "    - Starts only on local TTY sessions (tty1, tty2, etc.)"
+    echo "    - Does NOT start on SSH or network sessions"
+    echo "    - Does NOT start if DISPLAY is set (X11/Wayland sessions)"
+    echo "    - Runs in background with output redirected to log file"
+    echo
+}
+
+check_status() {
+    echo "Checking HiFiBerry VU Meter auto-start configuration..."
+    echo
+    
+    if [ -f "$PROFILE_FILE" ]; then
+        if grep -q "$MARKER_START" "$PROFILE_FILE"; then
+            echo "✓ Auto-start is ENABLED in $PROFILE_FILE"
+            echo
+            echo "Configuration section:"
+            sed -n "/$MARKER_START/,/$MARKER_END/p" "$PROFILE_FILE" | sed 's/^/    /'
+        else
+            echo "✗ Auto-start is NOT configured in $PROFILE_FILE"
+        fi
+    else
+        echo "✗ Profile file $PROFILE_FILE does not exist"
+    fi
+    
+    echo
+    echo "Current session info:"
+    echo "    TTY: $(tty 2>/dev/null || echo 'Not available')"
+    echo "    SSH: ${SSH_CONNECTION:+Yes (would not start VU meter)}${SSH_CONNECTION:-No}"
+    echo "    DISPLAY: ${DISPLAY:+Set (would not start VU meter)}${DISPLAY:-Not set}"
+    echo
+}
+
+remove_autostart() {
+    echo "Removing HiFiBerry VU Meter auto-start configuration..."
+    
+    if [ ! -f "$PROFILE_FILE" ]; then
+        echo "Profile file $PROFILE_FILE does not exist - nothing to remove"
+        return 0
+    fi
+    
+    if ! grep -q "$MARKER_START" "$PROFILE_FILE"; then
+        echo "Auto-start configuration not found in $PROFILE_FILE - nothing to remove"
+        return 0
+    fi
+    
+    # Create backup
+    cp "$PROFILE_FILE" "$PROFILE_FILE.backup.$(date +%Y%m%d_%H%M%S)"
+    echo "Created backup: $PROFILE_FILE.backup.$(date +%Y%m%d_%H%M%S)"
+    
+    # Remove the configuration section
+    sed -i "/$MARKER_START/,/$MARKER_END/d" "$PROFILE_FILE"
+    
+    echo "✓ Auto-start configuration removed from $PROFILE_FILE"
+    echo
+    echo "To restore, you can copy from the backup file or run this script again without --remove"
+}
+
+install_autostart() {
+    echo "Installing HiFiBerry VU Meter auto-start on local login..."
+    echo
+    
+    # Check if VU meter exists
+    if [ ! -f "$VU_METER_PATH/hifiberry_vu/vu_meter.py" ]; then
+        echo "Error: VU meter not found at $VU_METER_PATH/hifiberry_vu/vu_meter.py"
+        echo "Please run this script from the HiFiBerry VU directory"
+        exit 1
+    fi
+    
+    # Create profile file if it doesn't exist
+    if [ ! -f "$PROFILE_FILE" ]; then
+        echo "Creating $PROFILE_FILE..."
+        touch "$PROFILE_FILE"
+    fi
+    
+    # Check if already configured
+    if grep -q "$MARKER_START" "$PROFILE_FILE"; then
+        echo "Auto-start configuration already exists in $PROFILE_FILE"
+        echo "Use --remove first if you want to reinstall"
+        exit 1
+    fi
+    
+    # Create backup
+    cp "$PROFILE_FILE" "$PROFILE_FILE.backup.$(date +%Y%m%d_%H%M%S)"
+    echo "Created backup: $PROFILE_FILE.backup.$(date +%Y%m%d_%H%M%S)"
+    
+    # Add the auto-start configuration
+    cat >> "$PROFILE_FILE" << 'EOF'
+
+# HiFiBerry VU Meter - Auto-start on local login
+# Only starts on local TTY sessions, not SSH or X11/Wayland
+if [ -z "$SSH_CONNECTION" ] && [ -z "$DISPLAY" ] && [ -t 0 ] && tty | grep -q "^/dev/tty[0-9]"; then
+    # Check if VU meter is not already running
+    if ! pgrep -f "hifiberry_vu.vu_meter" > /dev/null; then
+        echo "Starting HiFiBerry VU Meter..."
+        # Start VU meter in background with default settings
+        cd "$HOME/round" 2>/dev/null || cd "$(dirname "$0")" 2>/dev/null || true
+        if [ -f "hifiberry_vu/vu_meter.py" ]; then
+            python3 -m hifiberry_vu.vu_meter --mode=alsa --channel=stereo --rotate=180 --no-fps > /tmp/vu-meter.log 2>&1 &
+            echo "HiFiBerry VU Meter started (PID: $!)"
+            echo "Log file: /tmp/vu-meter.log"
+        else
+            echo "Warning: HiFiBerry VU Meter not found in expected location"
+        fi
+    else
+        echo "HiFiBerry VU Meter is already running"
+    fi
+fi
+# End HiFiBerry VU Meter auto-start
+EOF
+    
+    # Update the path in the configuration
+    sed -i "s|cd \"\$HOME/round\"|cd \"$VU_METER_PATH\"|g" "$PROFILE_FILE"
+    
+    echo "✓ Auto-start configuration added to $PROFILE_FILE"
+    echo
+    echo "Configuration details:"
+    echo "    - Starts only on local TTY sessions (tty1, tty2, etc.)"
+    echo "    - Does NOT start on SSH sessions"
+    echo "    - Does NOT start if X11/Wayland is running (DISPLAY set)"
+    echo "    - Uses ALSA mode with stereo channel averaging"
+    echo "    - Runs with 180° rotation and no FPS display"
+    echo "    - Logs output to /tmp/vu-meter.log"
+    echo
+    echo "The VU meter will start automatically on your next local login."
+    echo "To test immediately, you can run:"
+    echo "    source ~/.profile"
+    echo
+}
+
+# Main script logic
+case "${1:-}" in
+    --help|-h)
+        show_help
+        ;;
+    --check|-c)
+        check_status
+        ;;
+    --remove|-r)
+        remove_autostart
+        ;;
+    "")
+        install_autostart
+        ;;
+    *)
+        echo "Unknown option: $1"
+        echo "Use --help for usage information"
+        exit 1
+        ;;
+esac
