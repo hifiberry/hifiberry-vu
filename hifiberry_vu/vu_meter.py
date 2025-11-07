@@ -21,20 +21,41 @@ import math
 import time
 import ctypes
 import argparse
+from pathlib import Path
 
 # Import VU monitoring module
 try:
-    from python_vu import VUMonitor
+    from .python_vu import VUMonitor
     VU_AVAILABLE = True
 except ImportError:
-    print("Warning: VU audio monitoring not available (missing python_vu module)")
-    VU_AVAILABLE = False
+    try:
+        from python_vu import VUMonitor
+        VU_AVAILABLE = True
+    except ImportError:
+        print("Warning: VU audio monitoring not available (missing python_vu module)")
+        VU_AVAILABLE = False
+
+def get_image_path(filename):
+    """Get the full path to an image file in the img directory."""
+    # Try to find img directory relative to this file
+    current_dir = Path(__file__).parent
+    img_dir = current_dir.parent / "img"
+    
+    if img_dir.exists():
+        return str(img_dir / filename)
+    
+    # Fallback: look in current working directory
+    if Path("img" / filename).exists():
+        return str(Path("img") / filename)
+    
+    # Last resort: return filename as-is
+    return filename
 
 # Configuration constants
 CONFIGS = {
     "simple": {
         # Image settings
-        "image_path": "simple-vu.png",
+        "image_path": get_image_path("simple-vu.png"),
         
         # Needle position and appearance
         "needle_center_x_percent": 0.50,    # 50% of screen width
@@ -51,7 +72,7 @@ CONFIGS = {
     },
     "simple2": {
         # Image settings
-        "image_path": "simple-vu2.png",
+        "image_path": get_image_path("simple-vu2.png"),
         
         # Needle position and appearance
         "needle_center_x_percent": 0.50,    # 50% of screen width

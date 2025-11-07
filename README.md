@@ -1,17 +1,22 @@
-# round
+# HiFiBerry VU Meter
 
-SDL2-based graphics application for embedded displays and framebuffer rendering.
+SDL2-based VU meter display with real-time audio monitoring for embedded systems and Raspberry Pi.
 
 ## Overview
 
-This project provides a foundation for creating graphics applications using SDL2 on embedded systems, particularly for direct framebuffer rendering without X11. The focus is on high-performance graphics using hardware acceleration where available.
+HiFiBerry VU Meter is a professional VU meter display application with real-time ALSA audio monitoring. Built with SDL2 for high-performance graphics rendering on embedded systems, particularly Raspberry Pi and other Linux devices with framebuffer support.
 
 ## Features
 
-- **SDL2 Integration**: Modern graphics library with hardware acceleration
-- **Framebuffer Support**: Direct rendering to `/dev/fb0` without X11
-- **Cross-Platform**: Works on embedded systems, Raspberry Pi, and desktop Linux
-- **Clean Architecture**: Fresh start with modern SDL2 best practices
+- **Real-time VU Monitoring**: Live ALSA audio input with configurable update rates (5-60 Hz)
+- **Multiple Display Modes**: Demo animation, real-time audio, or fixed needle position
+- **Configurable Audio Channels**: Left, right, stereo average, or maximum level
+- **Smooth Needle Movement**: Configurable averaging for fluid display (1-20 readings)
+- **Customizable VU Scales**: Configurable dB ranges and needle parameters per configuration
+- **Multiple VU Meter Images**: Support for different VU meter faces and scales
+- **Display Rotation**: 0°, 90°, 180°, 270° rotation support for various mounting orientations
+- **SDL2 Hardware Acceleration**: High-performance graphics with framebuffer support
+- **Professional VU Metering**: Industry-standard VU level calculations with proper dB scaling
 
 ## Installation
 
