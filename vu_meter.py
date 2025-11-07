@@ -52,7 +52,7 @@ DEFAULT_VU_MODE = "alsa"           # "demo" or "alsa"
 DEFAULT_CONFIG = "simple"          # Configuration name
 DEFAULT_ROTATE_ANGLE = 180         # Rotation angle: 0, 90, 180, or 270 degrees
 DEFAULT_VU_CHANNEL = "left"        # "left", "right", "max", or "stereo" (for alsa mode)
-DEFAULT_VU_UPDATE_RATE = 10        # VU level updates per second (for alsa mode)
+DEFAULT_VU_UPDATE_RATE = 30        # VU level updates per second (for alsa mode)
 DEFAULT_FPS_ENABLE = True          # FPS display
 
 # Demo mode settings
@@ -126,6 +126,13 @@ Examples:
     )
     
     parser.add_argument(
+        "--update-rate", 
+        type=int, 
+        default=DEFAULT_VU_UPDATE_RATE,
+        help="VU level update rate in Hz for ALSA mode (default: %(default)s)"
+    )
+    
+    parser.add_argument(
         "--list-configs", 
         action="store_true",
         help="List available configurations and exit"
@@ -148,6 +155,7 @@ def initialize_settings(args):
     CURRENT_CONFIG = args.config
     ROTATE_ANGLE = args.rotate
     VU_CHANNEL = args.channel
+    VU_UPDATE_RATE = args.update_rate
     FPS_ENABLE = args.fps
     
     # Set the configuration
