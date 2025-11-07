@@ -5,10 +5,12 @@ Features:
 - Displays vu.png image on 720x720px screen
 - Overlay needle display at configurable position
 - Needle positioned at 50%x, 72%y with 50% height length
-- Needle range: -20° to +20° (0° is vertical)
-- Demo mode: Animates needle -20° to +20° at 10 updates/sec in 0.2° steps
+- Needle range: -30° to +30° (0° is vertical)
+- Demo mode: Animates needle min to max in 1 second
+- Display rotation support (0°, 90°, 180°, 270°) - currently 180°
+- FPS display at configurable position
 - Configuration system with predefined settings (currently: "simple")
-- Exit with Ctrl+C or 'q' key
+- Exit with Ctrl+C only
 """
 
 import sdl2
@@ -29,8 +31,8 @@ CONFIGS = {
         "needle_center_x_percent": 0.50,    # 50% of screen width
         "needle_center_y_percent": 0.72,    # 72% of screen height
         "needle_length_percent": 0.50,      # 50% of screen height
-        "needle_min_angle": -30,             # Minimum angle in degrees
-        "needle_max_angle": 30,              # Maximum angle in degrees
+        "needle_min_angle": -40,             # Minimum angle in degrees
+        "needle_max_angle": 40,              # Maximum angle in degrees
         "needle_width": 3,                   # Needle thickness in pixels
         "needle_color": (255, 0, 0),         # Red color (R, G, B)
         
@@ -42,10 +44,13 @@ CONFIGS = {
 # Demo mode settings (separate from config)
 NEEDLE_DEFAULT_ANGLE = -30         # Default fixed position in degrees
 DEMO_NEEDLE = True                 # Set to False to disable demo mode
-DEMO_SWEEP_TIME = 2.0              # Time in seconds to go from min to max angle
+DEMO_SWEEP_TIME = 1.0              # Time in seconds to go from min to max angle
 
 # FPS display settings (global)
-FPS_ENABLE = True                  # Set to False to disable FPS display
+FPS_ENABLE = False                  # Set to False to disable FPS display
+
+# Display rotation (global)
+ROTATE_ANGLE = 180                 # Rotation angle: 0, 90, 180, or 270 degrees
 
 # Select configuration
 CURRENT_CONFIG = "simple"
@@ -182,6 +187,10 @@ class VUMeter:
         end_x = int(needle_center_x + needle_length * math.cos(angle_rad))
         end_y = int(needle_center_y + needle_length * math.sin(angle_rad))
         
+        # Apply rotation to coordinates
+        needle_center_x, needle_center_y = self.rotate_coordinates(needle_center_x, needle_center_y)
+        end_x, end_y = self.rotate_coordinates(end_x, end_y)
+        
         # Set needle color
         r, g, b = CONFIG["needle_color"]
         sdl2.SDL_SetRenderDrawColor(self.renderer, r, g, b, 255)
@@ -276,9 +285,39 @@ class VUMeter:
                     # Draw a size x size block for each pixel
                     for dx in range(size):
                         for dy in range(size):
-                            sdl2.SDL_RenderDrawPoint(self.renderer, 
-                                                   x + col * size + dx, 
-                                                   y + row * size + dy)
+                            px = x + col * size + dx
+                            py = y + row * size + dy
+                            # Apply rotation to text pixels based on ROTATE_ANGLE
+                            if ROTATE_ANGLE == 0:
+                                final_x, final_y = px, py
+                            elif ROTATE_ANGLE == 90:
+                                # Rotate 90° around the character center
+                                char_center_x = x + 2.5 * size
+                                char_center_y = y + 3.5 * size  
+                                rel_x = px - char_center_x
+                                rel_y = py - char_center_y
+                                final_x = int(char_center_x - rel_y)
+                                final_y = int(char_center_y + rel_x)
+                            elif ROTATE_ANGLE == 180:
+                                # Rotate 180° around the character center
+                                char_center_x = x + 2.5 * size
+                                char_center_y = y + 3.5 * size
+                                rel_x = px - char_center_x
+                                rel_y = py - char_center_y
+                                final_x = int(char_center_x - rel_x)
+                                final_y = int(char_center_y - rel_y)
+                            elif ROTATE_ANGLE == 270:
+                                # Rotate 270° around the character center
+                                char_center_x = x + 2.5 * size
+                                char_center_y = y + 3.5 * size
+                                rel_x = px - char_center_x
+                                rel_y = py - char_center_y
+                                final_x = int(char_center_x + rel_y)
+                                final_y = int(char_center_y - rel_x)
+                            else:
+                                final_x, final_y = px, py
+                            
+                            sdl2.SDL_RenderDrawPoint(self.renderer, final_x, final_y)
     
     def draw_text(self, x, y, text, color, size=3):
         """Draw simple text using bitmap digits."""
@@ -297,12 +336,45 @@ class VUMeter:
         self.update_fps()
         fps_text = f"{self.current_fps:.1f}"
         
-        # Position text at configured Y position, centered on X
+        # Calculate position based on rotation
         text_width = len(fps_text) * 6 * 3  # 6 pixels per char * size 3
-        text_x = self.width // 2 - text_width // 2  # Center horizontally
-        text_y = int(self.height * CONFIG["fps_position_y_percent"])
+        
+        if ROTATE_ANGLE == 0:
+            # Normal: bottom center
+            text_x = self.width // 2 - text_width // 2
+            text_y = int(self.height * CONFIG["fps_position_y_percent"])
+        elif ROTATE_ANGLE == 90:
+            # 90° rotation: right side, vertically centered
+            text_x = int(self.width * CONFIG["fps_position_y_percent"])
+            text_y = self.height // 2 - (len(fps_text) * 7 * 3) // 2  # Approximate text height
+        elif ROTATE_ANGLE == 180:
+            # 180° rotation: top center
+            text_x = self.width // 2 - text_width // 2
+            text_y = int(self.height * (1.0 - CONFIG["fps_position_y_percent"]))
+        elif ROTATE_ANGLE == 270:
+            # 270° rotation: left side, vertically centered
+            text_x = int(self.width * (1.0 - CONFIG["fps_position_y_percent"]))
+            text_y = self.height // 2 - (len(fps_text) * 7 * 3) // 2  # Approximate text height
+        else:
+            # Default to normal position
+            text_x = self.width // 2 - text_width // 2
+            text_y = int(self.height * CONFIG["fps_position_y_percent"])
         
         self.draw_text(text_x, text_y, fps_text, (0, 255, 0), size=3)  # Green text
+    
+    def rotate_coordinates(self, x, y):
+        """Rotate coordinates based on ROTATE_ANGLE."""
+        if ROTATE_ANGLE == 0:
+            return x, y
+        elif ROTATE_ANGLE == 90:
+            return self.height - y, x
+        elif ROTATE_ANGLE == 180:
+            return self.width - x, self.height - y
+        elif ROTATE_ANGLE == 270:
+            return y, self.width - x
+        else:
+            # Invalid rotation angle, return original coordinates
+            return x, y
     
     def draw_vu_placeholder(self):
         """Draw a simple VU meter placeholder."""
@@ -388,8 +460,17 @@ class VUMeter:
             # Create destination rectangle
             dest_rect = sdl2.SDL_Rect(x, y, texture_width.value, texture_height.value)
             
-            # Render texture
-            sdl2.SDL_RenderCopy(self.renderer, self.texture, None, dest_rect)
+            # Render texture with rotation
+            center_point = sdl2.SDL_Point(texture_width.value // 2, texture_height.value // 2)
+            sdl2.SDL_RenderCopyEx(
+                self.renderer, 
+                self.texture, 
+                None, 
+                dest_rect, 
+                ROTATE_ANGLE,  # Rotation angle
+                center_point,  # Center point for rotation
+                sdl2.SDL_FLIP_NONE  # No flipping
+            )
             
             # Update and draw needle (demo mode or fixed position)
             needle_angle = self.update_demo_needle()
@@ -414,9 +495,7 @@ class VUMeter:
         while sdl2.SDL_PollEvent(ctypes.byref(event)) != 0:
             if event.type == sdl2.SDL_QUIT:
                 self.running = False
-            elif event.type == sdl2.SDL_KEYDOWN:
-                if event.key.keysym.sym == sdl2.SDLK_ESCAPE or event.key.keysym.sym == sdl2.SDLK_q:
-                    self.running = False
+            # Removed 'q' key exit - only Ctrl+C supported
     
     def cleanup(self):
         """Clean up SDL2 resources."""
@@ -442,7 +521,7 @@ class VUMeter:
         print("VU Meter Display Started")
         if DEMO_NEEDLE:
             print("Demo needle animation enabled")
-        print("Press 'q' or Ctrl+C to exit")
+        print("Press Ctrl+C to exit")
         
         # Initialize demo needle timing
         self.last_needle_update = time.time()
@@ -498,7 +577,8 @@ def main():
         print(f"Demo: {CONFIG['needle_min_angle']}° to {CONFIG['needle_max_angle']}° in {DEMO_SWEEP_TIME}s ({DEMO_STEP_SIZE:.3f}°/step)")
     if FPS_ENABLE:
         print(f"FPS display enabled at {CONFIG['fps_position_y_percent']*100}% height")
-    print("Exit: Press 'q' or Ctrl+C")
+    print(f"Display rotation: {ROTATE_ANGLE}°")
+    print("Exit: Press Ctrl+C")
     print()
     
     try:
