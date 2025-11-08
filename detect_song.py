@@ -231,6 +231,92 @@ class SongDetector:
         self.recorder = AudioRecorder(device_name=device_name)
         self.acoustid = AcoustIDClient(api_key=api_key, debug=debug)
     
+    def _show_audio_levels(self, audio_data):
+        """
+        Display RMS and peak levels for recorded audio (debug mode).
+        
+        Args:
+            audio_data: numpy array of audio samples (interleaved stereo)
+        """
+        import math
+        
+        print("\nDEBUG: Audio Level Analysis")
+        print("-" * 40)
+        
+        # Separate left and right channels (interleaved stereo)
+        left_channel = audio_data[0::2]
+        right_channel = audio_data[1::2]
+        
+        # Calculate RMS for each channel
+        def calculate_rms_db(samples):
+            """Calculate RMS level in dB."""
+            if len(samples) == 0:
+                return -60.0
+            
+            # Calculate RMS (Root Mean Square)
+            rms = np.sqrt(np.mean(samples.astype(np.float64) ** 2))
+            
+            # Convert to dB (relative to full scale: 32768 for 16-bit)
+            if rms > 0:
+                db = 20 * math.log10(rms / 32768.0)
+            else:
+                db = -60.0  # Silence threshold
+            
+            return db
+        
+        def calculate_peak_db(samples):
+            """Calculate peak level in dB."""
+            if len(samples) == 0:
+                return -60.0
+            
+            # Find maximum absolute value
+            peak = np.max(np.abs(samples))
+            
+            # Convert to dB (relative to full scale: 32768 for 16-bit)
+            if peak > 0:
+                db = 20 * math.log10(peak / 32768.0)
+            else:
+                db = -60.0
+            
+            return db
+        
+        # Calculate levels
+        left_rms_db = calculate_rms_db(left_channel)
+        right_rms_db = calculate_rms_db(right_channel)
+        left_peak_db = calculate_peak_db(left_channel)
+        right_peak_db = calculate_peak_db(right_channel)
+        
+        # Calculate stereo average (linear space)
+        left_linear = 10 ** (left_rms_db / 20.0)
+        right_linear = 10 ** (right_rms_db / 20.0)
+        avg_linear = (left_linear + right_linear) / 2.0
+        stereo_rms_db = 20 * math.log10(avg_linear) if avg_linear > 0 else -60.0
+        
+        # Display results
+        print(f"Left Channel:")
+        print(f"  RMS:  {left_rms_db:>6.1f} dB")
+        print(f"  Peak: {left_peak_db:>6.1f} dB")
+        
+        print(f"Right Channel:")
+        print(f"  RMS:  {right_rms_db:>6.1f} dB")
+        print(f"  Peak: {right_peak_db:>6.1f} dB")
+        
+        print(f"Stereo Average:")
+        print(f"  RMS:  {stereo_rms_db:>6.1f} dB")
+        
+        # Check for potential issues
+        overall_peak = max(left_peak_db, right_peak_db)
+        if overall_peak >= -0.5:
+            print("\n⚠️  WARNING: Signal is clipping! (peak >= -0.5 dB)")
+        elif overall_peak < -40:
+            print("\n⚠️  WARNING: Signal is very quiet (peak < -40 dB)")
+        elif left_rms_db < -50 or right_rms_db < -50:
+            print("\n⚠️  WARNING: Low audio level detected")
+        else:
+            print("\n✓ Audio levels look good")
+        
+        print("-" * 40)
+    
     def detect_song(self, duration=10, verbose=True):
         """
         Record audio and detect the song.
@@ -262,6 +348,10 @@ class SongDetector:
             if verbose:
                 print("Saving audio to temporary file...")
             self.recorder.save_wav(audio_data, tmp_filename)
+            
+            # Debug: Show audio level information
+            if self.debug and verbose:
+                self._show_audio_levels(audio_data)
             
             # Generate fingerprint
             if verbose:
