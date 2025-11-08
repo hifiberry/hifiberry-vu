@@ -56,7 +56,7 @@ CONFIGS = {
         "needle_center_y_percent": 0.72,    # 72% of screen height
         "needle_length_percent": 0.50,      # 50% of screen height
         "needle_min_angle": -35,             # Minimum angle in degrees
-        "needle_max_angle": 18,              # Maximum angle in degrees
+        "needle_max_angle": 35,              # Maximum angle in degrees
         "needle_width": 3,                   # Needle thickness in pixels
         "needle_color": (255, 0, 0),         # Red color (R, G, B)
         
@@ -82,7 +82,7 @@ CONFIGS = {
         "needle_center_y_percent": 0.72,    # 72% of screen height
         "needle_length_percent": 0.50,      # 50% of screen height
         "needle_min_angle": -35,             # Minimum angle in degrees
-        "needle_max_angle": 18,              # Maximum angle in degrees
+        "needle_max_angle": 35,              # Maximum angle in degrees
         "needle_width": 3,                   # Needle thickness in pixels
         "needle_color": (255, 0, 0),         # Red color (R, G, B)
         
