@@ -22,12 +22,81 @@ import time
 import ctypes
 import argparse
 from pathlib import Path
+from collections import deque
 
 # Import VU monitoring module
 try:
     from .python_vu import VUMonitor
 except ImportError:
     from python_vu import VUMonitor
+
+
+class DelayRingBuffer:
+    """Ring buffer for storing VU readings with fixed time intervals for delayed playback."""
+    
+    def __init__(self, update_rate, max_delay_ms):
+        """
+        Initialize the delay ring buffer.
+        
+        Args:
+            update_rate: Update rate in Hz (e.g., 30)
+            max_delay_ms: Maximum delay in milliseconds (e.g., 1000 for 1 second)
+        """
+        self.update_rate = update_rate
+        self.max_delay_ms = max_delay_ms
+        
+        # Calculate buffer size: need enough samples to cover max delay
+        # Buffer size = (max_delay_ms / 1000) * update_rate, with extra buffer
+        self.buffer_size = int((max_delay_ms / 1000.0) * update_rate) + 10
+        
+        # Ring buffer stores tuples of (vu_db, max_db)
+        self.buffer = deque(maxlen=self.buffer_size)
+        
+        # Current write position (implicit in deque, but tracked for clarity)
+        self.sample_count = 0
+    
+    def add_sample(self, vu_db, max_db):
+        """
+        Add a new sample to the ring buffer.
+        
+        Args:
+            vu_db: VU level in dB
+            max_db: Maximum dB level for clipping detection
+        """
+        self.buffer.append((vu_db, max_db))
+        self.sample_count += 1
+    
+    def get_delayed_sample(self, delay_ms):
+        """
+        Get a sample from the past based on delay in milliseconds.
+        
+        Args:
+            delay_ms: Delay in milliseconds to look back
+            
+        Returns:
+            Tuple of (vu_db, max_db) from the delayed position, or most recent if delay is 0
+        """
+        if not self.buffer:
+            return (-60.0, -60.0)  # Return silence if buffer is empty
+        
+        if delay_ms == 0:
+            # No delay - return most recent sample
+            return self.buffer[-1]
+        
+        # Calculate how many samples to look back
+        # lookback_samples = (delay_ms / 1000) * update_rate
+        lookback_samples = int((delay_ms / 1000.0) * self.update_rate)
+        
+        # Clamp to buffer size
+        lookback_samples = min(lookback_samples, len(self.buffer) - 1)
+        
+        if lookback_samples >= len(self.buffer):
+            # Delay is longer than buffer history - return oldest sample
+            return self.buffer[0]
+        
+        # Look back from the end
+        index = -(lookback_samples + 1)
+        return self.buffer[index]
 
 def get_image_path(filename):
     """Get the full path to an image file in the img directory."""
@@ -301,14 +370,13 @@ class VUMeter:
         # VU reading averaging for smooth display
         # Calculate buffer size based on integration time and update rate
         # Buffer size = (integration_ms / 1000) * update_rate
-        from collections import deque
         buffer_size = max(1, int((INTEGRATION_MS / 1000.0) * VU_UPDATE_RATE))
         self.vu_readings_buffer = deque(maxlen=buffer_size)
         
-        # Delay buffer for VU display
-        # Stores tuples of (timestamp, vu_db, max_db) for delayed playback
-        self.delay_buffer = deque()
-        self.delayed_max_db = -60.0  # Initialize to minimum dB
+        # Delay ring buffer for VU display
+        # Maximum delay buffer: support up to 5 seconds of delay
+        max_delay_buffer_ms = max(5000, DELAY_MS + 1000)
+        self.delay_ring_buffer = DelayRingBuffer(VU_UPDATE_RATE, max_delay_buffer_ms)
         
         # FPS tracking
         self.frame_count = 0
@@ -406,8 +474,8 @@ class VUMeter:
         if not self.vu_monitor or not self.vu_monitor.is_running():
             return
         
-        # Get delayed max dB level (set by _update_audio_needle)
-        max_db = getattr(self, 'delayed_max_db', self.vu_monitor.get_max_db())
+        # Get delayed max dB level from ring buffer
+        _, max_db = self.delay_ring_buffer.get_delayed_sample(DELAY_MS)
         
         # Determine if clipping is occurring
         threshold = CONFIG.get("clip_detector_threshold_db", 0.0)
@@ -606,39 +674,11 @@ class VUMeter:
         # Apply VU meter offset (for display calibration)
         avg_vu_db += VU_METER_OFFSET
         
-        # Store in delay buffer with current timestamp
-        current_time = time.time()
-        self.delay_buffer.append((current_time, avg_vu_db, max_db_level))
+        # Add sample to delay ring buffer
+        self.delay_ring_buffer.add_sample(avg_vu_db, max_db_level)
         
-        # Remove old entries from delay buffer (keep only entries within delay window + some extra buffer)
-        delay_seconds = DELAY_MS / 1000.0
-        cutoff_time = current_time - delay_seconds - 1.0  # Keep 1 extra second
-        while self.delay_buffer and self.delay_buffer[0][0] < cutoff_time:
-            self.delay_buffer.popleft()
-        
-        # Retrieve delayed value from buffer
-        target_time = current_time - delay_seconds
-        delayed_vu_db = avg_vu_db  # Default to current if no delayed value available
-        delayed_max_db = max_db_level
-        
-        # Find the closest entry in the buffer to the target time
-        if self.delay_buffer:
-            if DELAY_MS == 0:
-                # No delay - use most recent value
-                delayed_vu_db = self.delay_buffer[-1][1]
-                delayed_max_db = self.delay_buffer[-1][2]
-            else:
-                # Find closest delayed value
-                best_diff = float('inf')
-                for timestamp, stored_vu_db, stored_max_db in self.delay_buffer:
-                    diff = abs(timestamp - target_time)
-                    if diff < best_diff:
-                        best_diff = diff
-                        delayed_vu_db = stored_vu_db
-                        delayed_max_db = stored_max_db
-        
-        # Store delayed max_db for clipping detector (accessed externally)
-        self.delayed_max_db = delayed_max_db
+        # Retrieve delayed sample from ring buffer
+        delayed_vu_db, delayed_max_db = self.delay_ring_buffer.get_delayed_sample(DELAY_MS)
         
         # Convert averaged VU dB level to needle angle using configurable dB range
         # VU range: min_db to max_db (from configuration)
