@@ -126,6 +126,7 @@ VU_CHANNEL = DEFAULT_VU_CHANNEL
 VU_UPDATE_RATE = DEFAULT_VU_UPDATE_RATE
 INTEGRATION_MS = DEFAULT_INTEGRATION_MS
 FPS_ENABLE = DEFAULT_FPS_ENABLE
+FIXED_DB = 0.0  # Fixed dB value for fixed mode
 CONFIG = None  # Will be set after argument parsing
 
 def parse_arguments():
@@ -141,14 +142,23 @@ Examples:
   %(prog)s --mode=alsa --config=simple --rotate=0
   %(prog)s --mode=alsa --channel=right --fps
   %(prog)s --mode=alsa --integration-ms=500 --vu-offset=3.0
+  %(prog)s --mode=fixed --fixed-db=-10.0
+  %(prog)s --mode=fixed --fixed-db=0.0 --vu-offset=3.0
         """.format(", ".join(CONFIGS.keys()))
     )
     
     parser.add_argument(
         "--mode", 
-        choices=["demo", "alsa"], 
+        choices=["demo", "alsa", "fixed"], 
         default=DEFAULT_VU_MODE,
-        help="VU meter mode: 'demo' for animated needle, 'alsa' for real audio input (default: %(default)s)"
+        help="VU meter mode: 'demo' for animated needle, 'alsa' for real audio input, 'fixed' for fixed dB position (default: %(default)s)"
+    )
+    
+    parser.add_argument(
+        "--fixed-db", 
+        type=float, 
+        default=0.0,
+        help="Fixed dB value to display when mode is 'fixed' (default: %(default)s)"
     )
     
     parser.add_argument(
@@ -224,7 +234,7 @@ Examples:
 def initialize_settings(args):
     """Initialize global settings from command line arguments."""
     global VU_MODE, CURRENT_CONFIG, ROTATE_ANGLE, VU_CHANNEL, VU_UPDATE_RATE, INTEGRATION_MS, FPS_ENABLE, CONFIG
-    global DEMO_ANGLE_RANGE, DEMO_UPDATES_PER_SECOND, DEMO_STEP_SIZE, VU_METER_OFFSET
+    global DEMO_ANGLE_RANGE, DEMO_UPDATES_PER_SECOND, DEMO_STEP_SIZE, VU_METER_OFFSET, FIXED_DB
     
     VU_MODE = args.mode
     CURRENT_CONFIG = args.config
@@ -234,6 +244,7 @@ def initialize_settings(args):
     INTEGRATION_MS = args.integration_ms
     FPS_ENABLE = args.fps
     VU_METER_OFFSET = args.vu_offset
+    FIXED_DB = args.fixed_db
     
     # Set the configuration
     CONFIG = CONFIGS[CURRENT_CONFIG]
@@ -464,6 +475,8 @@ class VUMeter:
             return self._update_demo_needle()
         elif VU_MODE == "alsa":
             return self._update_audio_needle()
+        elif VU_MODE == "fixed":
+            return self._update_fixed_needle()
         else:
             return NEEDLE_DEFAULT_ANGLE
     
@@ -489,8 +502,30 @@ class VUMeter:
         
         return self.current_needle_angle
     
+    def _update_fixed_needle(self):
+        """Update needle position based on fixed dB value."""
+        global FIXED_DB, VU_METER_OFFSET
+        
+        # Apply VU meter offset to fixed dB value
+        display_db = FIXED_DB + VU_METER_OFFSET
+        
+        # Convert fixed dB level to needle angle using configurable dB range
+        min_db = CONFIG["min_db"]
+        max_db = CONFIG["max_db"]
+        vu_range = max_db - min_db  # Total VU range in dB
+        vu_normalized = (display_db - min_db) / vu_range  # Normalize to 0.0-1.0
+        vu_normalized = max(0.0, min(1.0, vu_normalized))  # Clamp
+        
+        # Map to needle angle range
+        angle_range = CONFIG["needle_max_angle"] - CONFIG["needle_min_angle"]
+        needle_angle = CONFIG["needle_min_angle"] + (vu_normalized * angle_range)
+        
+        return needle_angle
+    
     def _update_audio_needle(self):
         """Update needle position based on audio VU levels."""
+        global VU_METER_OFFSET
+        
         if not self.vu_monitor or not self.vu_monitor.is_running():
             return NEEDLE_DEFAULT_ANGLE
         
@@ -817,6 +852,10 @@ def main():
     elif VU_MODE == "alsa":
         print(f"ALSA VU: {VU_CHANNEL} channel, {VU_UPDATE_RATE} updates/sec")
         print(f"VU Offset: {VU_METER_OFFSET:+.1f} dB (applied to display only)")
+    elif VU_MODE == "fixed":
+        print(f"Fixed: {FIXED_DB:+.1f} dB (raw)")
+        print(f"VU Offset: {VU_METER_OFFSET:+.1f} dB (applied to display)")
+        print(f"Display value: {FIXED_DB + VU_METER_OFFSET:+.1f} dB")
     if FPS_ENABLE:
         print("FPS display enabled (console output)")
     print(f"Display rotation: {ROTATE_ANGLE}°")
