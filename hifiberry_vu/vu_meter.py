@@ -557,12 +557,15 @@ class VUMeter:
             vu_db = max(left_db, right_db)
         elif VU_CHANNEL == "stereo":
             # Average the left and right channels (in linear space, then convert back to dB)
-            # Convert dB to linear, average, then back to dB
-            min_db_threshold = CONFIG["min_db"]
-            left_linear = 10**(left_db / 20.0) if left_db > min_db_threshold else 0
-            right_linear = 10**(right_db / 20.0) if right_db > min_db_threshold else 0
+            # Convert dB to linear (amplitude), average, then back to dB
+            left_linear = 10**(left_db / 20.0)
+            right_linear = 10**(right_db / 20.0)
             avg_linear = (left_linear + right_linear) / 2.0
-            vu_db = 20.0 * math.log10(avg_linear) if avg_linear > 0 else min_db_threshold
+            # Convert back to dB, with safety check for zero
+            if avg_linear > 0:
+                vu_db = 20.0 * math.log10(avg_linear)
+            else:
+                vu_db = -60.0  # Return minimum dB value for complete silence
         else:
             vu_db = left_db  # Default to left
         
