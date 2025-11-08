@@ -127,6 +127,7 @@ VU_UPDATE_RATE = DEFAULT_VU_UPDATE_RATE
 INTEGRATION_MS = DEFAULT_INTEGRATION_MS
 FPS_ENABLE = DEFAULT_FPS_ENABLE
 FIXED_DB = 0.0  # Fixed dB value for fixed mode
+DEBUG_ENABLE = False  # Debug output flag
 CONFIG = None  # Will be set after argument parsing
 
 def parse_arguments():
@@ -223,6 +224,12 @@ Examples:
         help="List available configurations and exit"
     )
     
+    parser.add_argument(
+        "--debug", 
+        action="store_true",
+        help="Enable debug output for audio levels"
+    )
+    
     args = parser.parse_args()
     
     # Handle --no-fps override
@@ -234,7 +241,7 @@ Examples:
 def initialize_settings(args):
     """Initialize global settings from command line arguments."""
     global VU_MODE, CURRENT_CONFIG, ROTATE_ANGLE, VU_CHANNEL, VU_UPDATE_RATE, INTEGRATION_MS, FPS_ENABLE, CONFIG
-    global DEMO_ANGLE_RANGE, DEMO_UPDATES_PER_SECOND, DEMO_STEP_SIZE, VU_METER_OFFSET, FIXED_DB
+    global DEMO_ANGLE_RANGE, DEMO_UPDATES_PER_SECOND, DEMO_STEP_SIZE, VU_METER_OFFSET, FIXED_DB, DEBUG_ENABLE
     
     VU_MODE = args.mode
     CURRENT_CONFIG = args.config
@@ -245,6 +252,7 @@ def initialize_settings(args):
     FPS_ENABLE = args.fps
     VU_METER_OFFSET = args.vu_offset
     FIXED_DB = args.fixed_db
+    DEBUG_ENABLE = args.debug
     
     # Set the configuration
     CONFIG = CONFIGS[CURRENT_CONFIG]
@@ -532,6 +540,14 @@ class VUMeter:
         # Get VU levels from audio monitor
         left_db, right_db = self.vu_monitor.get_vu_levels()
         
+        # Debug output (print periodically)
+        if DEBUG_ENABLE:
+            if not hasattr(self, '_debug_counter'):
+                self._debug_counter = 0
+            self._debug_counter += 1
+            if self._debug_counter % 60 == 0:  # Print every 60 frames (about once per second at 60fps)
+                print(f"DEBUG: Raw levels - Left: {left_db:.1f} dB, Right: {right_db:.1f} dB")
+        
         # Select channel based on VU_CHANNEL setting
         if VU_CHANNEL == "left":
             vu_db = left_db
@@ -558,6 +574,12 @@ class VUMeter:
             avg_vu_db = sum(self.vu_readings_buffer) / len(self.vu_readings_buffer)
         else:
             avg_vu_db = vu_db
+        
+        # Debug output for averaging
+        if DEBUG_ENABLE and hasattr(self, '_debug_counter') and self._debug_counter % 60 == 0:
+            print(f"DEBUG: Selected channel ({VU_CHANNEL}): {vu_db:.1f} dB")
+            print(f"DEBUG: Averaged (buffer size {len(self.vu_readings_buffer)}): {avg_vu_db:.1f} dB")
+            print(f"DEBUG: After offset (+{VU_METER_OFFSET:.1f}): {avg_vu_db + VU_METER_OFFSET:.1f} dB")
         
         # Apply VU meter offset (for display calibration)
         avg_vu_db += VU_METER_OFFSET
