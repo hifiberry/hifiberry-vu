@@ -216,18 +216,20 @@ class FingerprintGenerator:
 class SongDetector:
     """Main song detection application."""
     
-    def __init__(self, api_key, device_name=None):
+    def __init__(self, api_key, device_name=None, debug=False):
         """
         Initialize song detector.
         
         Args:
             api_key: AcoustID API key
             device_name: Optional ALSA device name
+            debug: Enable debug output
         """
         self.api_key = api_key
         self.device_name = device_name
+        self.debug = debug
         self.recorder = AudioRecorder(device_name=device_name)
-        self.acoustid = AcoustIDClient(api_key=api_key)
+        self.acoustid = AcoustIDClient(api_key=api_key, debug=debug)
     
     def detect_song(self, duration=10, verbose=True):
         """
@@ -272,12 +274,21 @@ class SongDetector:
             
             if verbose:
                 print(f"Fingerprint generated (duration: {duration_sec}s)")
+                if self.debug:
+                    print(f"DEBUG: Fingerprint length: {len(fingerprint)} characters")
+                    print(f"DEBUG: Fingerprint preview: {fingerprint[:100]}...")
                 print("Querying AcoustID API...")
             
             # Query AcoustID
             try:
+                # Ensure duration is an integer (API requires int)
+                duration_int = int(duration_sec) if duration_sec else 0
+                
+                if self.debug:
+                    print(f"DEBUG: Duration (int): {duration_int}")
+                
                 result = self.acoustid.lookup_fingerprint(
-                    duration=duration_sec,
+                    duration=duration_int,
                     fingerprint=fingerprint,
                     meta=['recordings', 'releasegroups', 'compress']
                 )
@@ -476,6 +487,12 @@ Requirements:
         help='Minimal output (only show results)'
     )
     
+    parser.add_argument(
+        '--debug',
+        action='store_true',
+        help='Enable debug output (API requests, parameters, etc.)'
+    )
+    
     args = parser.parse_args()
     
     # Check for fpcalc
@@ -487,7 +504,8 @@ Requirements:
     # Create detector
     detector = SongDetector(
         api_key=args.api_key,
-        device_name=args.device
+        device_name=args.device,
+        debug=args.debug
     )
     
     try:

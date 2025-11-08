@@ -24,6 +24,7 @@ Example:
 import requests
 import time
 import gzip
+import json
 from typing import Optional, Dict, List, Any, Union
 from io import BytesIO
 
@@ -62,7 +63,8 @@ class AcoustIDClient:
         api_key: str,
         base_url: Optional[str] = None,
         rate_limit: float = DEFAULT_RATE_LIMIT,
-        compress: bool = True
+        compress: bool = True,
+        debug: bool = False
     ):
         """
         Initialize the AcoustID client.
@@ -72,11 +74,13 @@ class AcoustIDClient:
             base_url: Optional custom base URL (default: https://api.acoustid.org/v2)
             rate_limit: Maximum requests per second (default: 3)
             compress: Whether to use gzip compression for POST requests (default: True)
+            debug: Whether to print debug information (default: False)
         """
         self.api_key = api_key
         self.base_url = base_url or self.BASE_URL
         self.rate_limit = rate_limit
         self.compress = compress
+        self.debug = debug
         
         # Rate limiting state
         self._last_request_time = 0.0
@@ -124,13 +128,18 @@ class AcoustIDClient:
         if 'format' not in params:
             params['format'] = 'json'
         
+        if self.debug:
+            print(f"DEBUG: Making {method} request to {url}")
+            print(f"DEBUG: Parameters: {params}")
+        
         try:
             if method.upper() == 'GET':
                 response = requests.get(url, params=params, timeout=30)
             else:  # POST
                 if self.compress:
                     # Compress the request body with gzip
-                    body = requests.compat.urlencode(params).encode('utf-8')
+                    from urllib.parse import urlencode
+                    body = urlencode(params, doseq=True).encode('utf-8')
                     compressed = gzip.compress(body)
                     
                     headers = {
@@ -141,12 +150,17 @@ class AcoustIDClient:
                 else:
                     response = requests.post(url, data=params, timeout=30)
             
-            response.raise_for_status()
+            # Try to parse JSON response even on error status codes
+            try:
+                result = response.json()
+            except json.JSONDecodeError:
+                # If we can't parse JSON, include response text in error
+                error_text = response.text[:500] if response.text else "No response body"
+                raise AcoustIDError(
+                    f"Invalid JSON response from API (status {response.status_code}): {error_text}"
+                )
             
-            # Parse JSON response
-            result = response.json()
-            
-            # Check for API errors
+            # Check for API errors in the JSON response
             if result.get('status') == 'error':
                 error_msg = result.get('error', {})
                 error_code = error_msg.get('code', 'unknown')
@@ -157,8 +171,16 @@ class AcoustIDClient:
                 else:
                     raise AcoustIDAPIError(f"API error ({error_code}): {error_message}")
             
+            # Raise for HTTP errors if status is not 'ok'
+            if response.status_code != 200 and result.get('status') != 'ok':
+                error_detail = f"Status: {response.status_code}, Response: {result}"
+                raise AcoustIDError(f"HTTP error: {error_detail}")
+            
             return result
             
+        except AcoustIDError:
+            # Re-raise our custom errors
+            raise
         except requests.exceptions.RequestException as e:
             raise AcoustIDError(f"Request failed: {e}")
     
