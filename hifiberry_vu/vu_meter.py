@@ -111,6 +111,7 @@ DEFAULT_ROTATE_ANGLE = 180         # Rotation angle: 0, 90, 180, or 270 degrees
 DEFAULT_VU_CHANNEL = "left"        # "left", "right", "max", or "stereo" (for alsa mode)
 DEFAULT_VU_UPDATE_RATE = 30        # VU level updates per second (for alsa mode)
 DEFAULT_INTEGRATION_MS = 300       # Integration time in milliseconds for VU averaging
+DEFAULT_DELAY_MS = 0               # Delay in milliseconds for VU display
 DEFAULT_FPS_ENABLE = True          # FPS display
 VU_METER_OFFSET = DEFAULT_VU_METER_OFFSET  # VU meter offset in dB
 
@@ -125,6 +126,7 @@ ROTATE_ANGLE = DEFAULT_ROTATE_ANGLE
 VU_CHANNEL = DEFAULT_VU_CHANNEL
 VU_UPDATE_RATE = DEFAULT_VU_UPDATE_RATE
 INTEGRATION_MS = DEFAULT_INTEGRATION_MS
+DELAY_MS = DEFAULT_DELAY_MS
 FPS_ENABLE = DEFAULT_FPS_ENABLE
 FIXED_DB = 0.0  # Fixed dB value for fixed mode
 DEBUG_ENABLE = False  # Debug output flag
@@ -143,6 +145,7 @@ Examples:
   %(prog)s --mode=alsa --config=simple --rotate=0
   %(prog)s --mode=alsa --channel=right --fps
   %(prog)s --mode=alsa --integration-ms=500 --vu-offset=3.0
+  %(prog)s --mode=alsa --delay=200
   %(prog)s --mode=fixed --fixed-db=-10.0
   %(prog)s --mode=fixed --fixed-db=0.0 --vu-offset=3.0
         """.format(", ".join(CONFIGS.keys()))
@@ -212,6 +215,13 @@ Examples:
     )
     
     parser.add_argument(
+        "--delay", 
+        type=int, 
+        default=DEFAULT_DELAY_MS,
+        help="Delay in milliseconds for VU display (default: %(default)s)"
+    )
+    
+    parser.add_argument(
         "--vu-offset", 
         type=float, 
         default=DEFAULT_VU_METER_OFFSET,
@@ -240,7 +250,7 @@ Examples:
 
 def initialize_settings(args):
     """Initialize global settings from command line arguments."""
-    global VU_MODE, CURRENT_CONFIG, ROTATE_ANGLE, VU_CHANNEL, VU_UPDATE_RATE, INTEGRATION_MS, FPS_ENABLE, CONFIG
+    global VU_MODE, CURRENT_CONFIG, ROTATE_ANGLE, VU_CHANNEL, VU_UPDATE_RATE, INTEGRATION_MS, DELAY_MS, FPS_ENABLE, CONFIG
     global DEMO_ANGLE_RANGE, DEMO_UPDATES_PER_SECOND, DEMO_STEP_SIZE, VU_METER_OFFSET, FIXED_DB, DEBUG_ENABLE
     
     VU_MODE = args.mode
@@ -249,6 +259,7 @@ def initialize_settings(args):
     VU_CHANNEL = args.channel
     VU_UPDATE_RATE = args.update_rate
     INTEGRATION_MS = args.integration_ms
+    DELAY_MS = args.delay
     FPS_ENABLE = args.fps
     VU_METER_OFFSET = args.vu_offset
     FIXED_DB = args.fixed_db
@@ -293,6 +304,11 @@ class VUMeter:
         from collections import deque
         buffer_size = max(1, int((INTEGRATION_MS / 1000.0) * VU_UPDATE_RATE))
         self.vu_readings_buffer = deque(maxlen=buffer_size)
+        
+        # Delay buffer for VU display
+        # Stores tuples of (timestamp, vu_db, max_db) for delayed playback
+        self.delay_buffer = deque()
+        self.delayed_max_db = -60.0  # Initialize to minimum dB
         
         # FPS tracking
         self.frame_count = 0
@@ -390,8 +406,8 @@ class VUMeter:
         if not self.vu_monitor or not self.vu_monitor.is_running():
             return
         
-        # Get max dB level
-        max_db = self.vu_monitor.get_max_db()
+        # Get delayed max dB level (set by _update_audio_needle)
+        max_db = getattr(self, 'delayed_max_db', self.vu_monitor.get_max_db())
         
         # Determine if clipping is occurring
         threshold = CONFIG.get("clip_detector_threshold_db", 0.0)
@@ -540,6 +556,9 @@ class VUMeter:
         # Get VU levels from audio monitor
         left_db, right_db = self.vu_monitor.get_vu_levels()
         
+        # Get max dB level for clipping detection (not affected by delay)
+        max_db_level = self.vu_monitor.get_max_db()
+        
         # Debug output (print periodically)
         if DEBUG_ENABLE:
             if not hasattr(self, '_debug_counter'):
@@ -587,13 +606,47 @@ class VUMeter:
         # Apply VU meter offset (for display calibration)
         avg_vu_db += VU_METER_OFFSET
         
+        # Store in delay buffer with current timestamp
+        current_time = time.time()
+        self.delay_buffer.append((current_time, avg_vu_db, max_db_level))
+        
+        # Remove old entries from delay buffer (keep only entries within delay window + some extra buffer)
+        delay_seconds = DELAY_MS / 1000.0
+        cutoff_time = current_time - delay_seconds - 1.0  # Keep 1 extra second
+        while self.delay_buffer and self.delay_buffer[0][0] < cutoff_time:
+            self.delay_buffer.popleft()
+        
+        # Retrieve delayed value from buffer
+        target_time = current_time - delay_seconds
+        delayed_vu_db = avg_vu_db  # Default to current if no delayed value available
+        delayed_max_db = max_db_level
+        
+        # Find the closest entry in the buffer to the target time
+        if self.delay_buffer:
+            if DELAY_MS == 0:
+                # No delay - use most recent value
+                delayed_vu_db = self.delay_buffer[-1][1]
+                delayed_max_db = self.delay_buffer[-1][2]
+            else:
+                # Find closest delayed value
+                best_diff = float('inf')
+                for timestamp, stored_vu_db, stored_max_db in self.delay_buffer:
+                    diff = abs(timestamp - target_time)
+                    if diff < best_diff:
+                        best_diff = diff
+                        delayed_vu_db = stored_vu_db
+                        delayed_max_db = stored_max_db
+        
+        # Store delayed max_db for clipping detector (accessed externally)
+        self.delayed_max_db = delayed_max_db
+        
         # Convert averaged VU dB level to needle angle using configurable dB range
         # VU range: min_db to max_db (from configuration)
         # Needle range: needle_min_angle to needle_max_angle
         min_db = CONFIG["min_db"]
         max_db = CONFIG["max_db"]
         vu_range = max_db - min_db  # Total VU range in dB
-        vu_normalized = (avg_vu_db - min_db) / vu_range  # Normalize to 0.0-1.0
+        vu_normalized = (delayed_vu_db - min_db) / vu_range  # Normalize to 0.0-1.0
         vu_normalized = max(0.0, min(1.0, vu_normalized))  # Clamp
         
         # Map to needle angle range
