@@ -110,7 +110,7 @@ DEFAULT_CONFIG = "simple"          # Configuration name
 DEFAULT_ROTATE_ANGLE = 180         # Rotation angle: 0, 90, 180, or 270 degrees
 DEFAULT_VU_CHANNEL = "left"        # "left", "right", "max", or "stereo" (for alsa mode)
 DEFAULT_VU_UPDATE_RATE = 30        # VU level updates per second (for alsa mode)
-DEFAULT_AVERAGE_READINGS = 5       # Number of readings to average for smoother display
+DEFAULT_INTEGRATION_MS = 300       # Integration time in milliseconds for VU averaging
 DEFAULT_FPS_ENABLE = True          # FPS display
 VU_METER_OFFSET = DEFAULT_VU_METER_OFFSET  # VU meter offset in dB
 
@@ -124,7 +124,7 @@ CURRENT_CONFIG = DEFAULT_CONFIG
 ROTATE_ANGLE = DEFAULT_ROTATE_ANGLE
 VU_CHANNEL = DEFAULT_VU_CHANNEL
 VU_UPDATE_RATE = DEFAULT_VU_UPDATE_RATE
-AVERAGE_READINGS = DEFAULT_AVERAGE_READINGS
+INTEGRATION_MS = DEFAULT_INTEGRATION_MS
 FPS_ENABLE = DEFAULT_FPS_ENABLE
 CONFIG = None  # Will be set after argument parsing
 
@@ -140,6 +140,7 @@ Examples:
   %(prog)s --mode=demo --config=simple --rotate=180
   %(prog)s --mode=alsa --config=simple --rotate=0
   %(prog)s --mode=alsa --channel=right --fps
+  %(prog)s --mode=alsa --integration-ms=500 --vu-offset=3.0
         """.format(", ".join(CONFIGS.keys()))
     )
     
@@ -193,10 +194,10 @@ Examples:
     )
     
     parser.add_argument(
-        "--average-readings", 
+        "--integration-ms", 
         type=int, 
-        default=DEFAULT_AVERAGE_READINGS,
-        help="Number of VU readings to average for smoother display (default: %(default)s)"
+        default=DEFAULT_INTEGRATION_MS,
+        help="Integration time in milliseconds for VU averaging (default: %(default)s)"
     )
     
     parser.add_argument(
@@ -222,7 +223,7 @@ Examples:
 
 def initialize_settings(args):
     """Initialize global settings from command line arguments."""
-    global VU_MODE, CURRENT_CONFIG, ROTATE_ANGLE, VU_CHANNEL, VU_UPDATE_RATE, AVERAGE_READINGS, FPS_ENABLE, CONFIG
+    global VU_MODE, CURRENT_CONFIG, ROTATE_ANGLE, VU_CHANNEL, VU_UPDATE_RATE, INTEGRATION_MS, FPS_ENABLE, CONFIG
     global DEMO_ANGLE_RANGE, DEMO_UPDATES_PER_SECOND, DEMO_STEP_SIZE, VU_METER_OFFSET
     
     VU_MODE = args.mode
@@ -230,7 +231,7 @@ def initialize_settings(args):
     ROTATE_ANGLE = args.rotate
     VU_CHANNEL = args.channel
     VU_UPDATE_RATE = args.update_rate
-    AVERAGE_READINGS = args.average_readings
+    INTEGRATION_MS = args.integration_ms
     FPS_ENABLE = args.fps
     VU_METER_OFFSET = args.vu_offset
     
@@ -268,8 +269,11 @@ class VUMeter:
             self.vu_monitor = VUMonitor(update_rate=VU_UPDATE_RATE)
         
         # VU reading averaging for smooth display
+        # Calculate buffer size based on integration time and update rate
+        # Buffer size = (integration_ms / 1000) * update_rate
         from collections import deque
-        self.vu_readings_buffer = deque(maxlen=AVERAGE_READINGS)
+        buffer_size = max(1, int((INTEGRATION_MS / 1000.0) * VU_UPDATE_RATE))
+        self.vu_readings_buffer = deque(maxlen=buffer_size)
         
         # FPS tracking
         self.frame_count = 0
