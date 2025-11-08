@@ -66,10 +66,10 @@ CONFIGS = {
         
         # Clipping detector settings
         "clip_detector_enabled": True,       # Enable clipping detector
-        "clip_detector_x_percent": 0.85,     # X position (85% of screen width)
-        "clip_detector_y_percent": 0.5,     # Y position (50% of screen height)
+        "clip_detector_x_percent": 0.71,     # X position (71% of screen width)
+        "clip_detector_y_percent": 0.47,     # Y position (47% of screen height)
         "clip_detector_radius": 15,          # Radius in pixels
-        "clip_detector_threshold_db": -1.0,   # dB threshold for clipping
+        "clip_detector_threshold_db": 0.0,   # dB threshold for clipping
         "clip_detector_color_off": (30, 30, 30),  # Dark gray when not clipping
         "clip_detector_color_on": (255, 0, 0),    # Red when clipping
     },
@@ -92,14 +92,17 @@ CONFIGS = {
         
         # Clipping detector settings
         "clip_detector_enabled": True,       # Enable clipping detector
-        "clip_detector_x_percent": 0.85,     # X position (85% of screen width)
-        "clip_detector_y_percent": 0.5,     # Y position (50% of screen height)
+        "clip_detector_x_percent": 0.71,     # X position (71% of screen width)
+        "clip_detector_y_percent": 0.47,     # Y position (47% of screen height)
         "clip_detector_radius": 15,          # Radius in pixels
-        "clip_detector_threshold_db": -1.0,   # dB threshold for clipping
+        "clip_detector_threshold_db": 0.0,   # dB threshold for clipping
         "clip_detector_color_off": (30, 30, 30),  # Dark gray when not clipping
         "clip_detector_color_on": (255, 0, 0),    # Red when clipping
     }
 }
+
+# VU Meter offset (added to VU reading before display, not applied to max_db for clipping detection)
+DEFAULT_VU_METER_OFFSET = 6.0  # dB offset to add to VU meter reading
 
 # Default settings (will be overridden by command line arguments)
 DEFAULT_VU_MODE = "alsa"           # "demo" or "alsa"
@@ -109,6 +112,7 @@ DEFAULT_VU_CHANNEL = "left"        # "left", "right", "max", or "stereo" (for al
 DEFAULT_VU_UPDATE_RATE = 30        # VU level updates per second (for alsa mode)
 DEFAULT_AVERAGE_READINGS = 5       # Number of readings to average for smoother display
 DEFAULT_FPS_ENABLE = True          # FPS display
+VU_METER_OFFSET = DEFAULT_VU_METER_OFFSET  # VU meter offset in dB
 
 # Demo mode settings
 NEEDLE_DEFAULT_ANGLE = -30         # Default fixed position in degrees (when mode = "fixed")
@@ -196,6 +200,13 @@ Examples:
     )
     
     parser.add_argument(
+        "--vu-offset", 
+        type=float, 
+        default=DEFAULT_VU_METER_OFFSET,
+        help="VU meter offset in dB (added to VU reading before display, not to clipping detection) (default: %(default)s)"
+    )
+    
+    parser.add_argument(
         "--list-configs", 
         action="store_true",
         help="List available configurations and exit"
@@ -212,7 +223,7 @@ Examples:
 def initialize_settings(args):
     """Initialize global settings from command line arguments."""
     global VU_MODE, CURRENT_CONFIG, ROTATE_ANGLE, VU_CHANNEL, VU_UPDATE_RATE, AVERAGE_READINGS, FPS_ENABLE, CONFIG
-    global DEMO_ANGLE_RANGE, DEMO_UPDATES_PER_SECOND, DEMO_STEP_SIZE
+    global DEMO_ANGLE_RANGE, DEMO_UPDATES_PER_SECOND, DEMO_STEP_SIZE, VU_METER_OFFSET
     
     VU_MODE = args.mode
     CURRENT_CONFIG = args.config
@@ -221,6 +232,7 @@ def initialize_settings(args):
     VU_UPDATE_RATE = args.update_rate
     AVERAGE_READINGS = args.average_readings
     FPS_ENABLE = args.fps
+    VU_METER_OFFSET = args.vu_offset
     
     # Set the configuration
     CONFIG = CONFIGS[CURRENT_CONFIG]
@@ -507,6 +519,9 @@ class VUMeter:
             avg_vu_db = sum(self.vu_readings_buffer) / len(self.vu_readings_buffer)
         else:
             avg_vu_db = vu_db
+        
+        # Apply VU meter offset (for display calibration)
+        avg_vu_db += VU_METER_OFFSET
         
         # Convert averaged VU dB level to needle angle using configurable dB range
         # VU range: min_db to max_db (from configuration)
@@ -797,6 +812,7 @@ def main():
         print(f"Demo: {CONFIG['needle_min_angle']}° to {CONFIG['needle_max_angle']}° in {DEMO_SWEEP_TIME}s ({DEMO_STEP_SIZE:.3f}°/step)")
     elif VU_MODE == "alsa":
         print(f"ALSA VU: {VU_CHANNEL} channel, {VU_UPDATE_RATE} updates/sec")
+        print(f"VU Offset: {VU_METER_OFFSET:+.1f} dB (applied to display only)")
     if FPS_ENABLE:
         print("FPS display enabled (console output)")
     print(f"Display rotation: {ROTATE_ANGLE}°")
