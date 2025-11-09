@@ -17,7 +17,6 @@ HiFiBerry VU Meter is a professional VU meter display application with real-time
 - **Display Rotation**: 0°, 90°, 180°, 270° rotation support for various mounting orientations
 - **SDL2 Hardware Acceleration**: High-performance graphics with framebuffer support
 - **Professional VU Metering**: Industry-standard VU level calculations with proper dB scaling
-- **Song Detection**: AcoustID integration for automatic song identification from audio input
 
 ## Installation
 
@@ -246,42 +245,8 @@ SDL2 provides:
 - Rich feature set (audio, input, networking, etc.)
 - Active development and community support
 
-## Song Detection Tool
-
-The project includes a command-line tool for automatic song identification using AcoustID:
-
-```bash
-# Install Chromaprint for audio fingerprinting
-sudo apt-get install libchromaprint-tools
-
-# Detect currently playing song (10 second recording)
-python3 detect_song.py --api-key YOUR_API_KEY
-
-# Use longer recording for better accuracy
-python3 detect_song.py --api-key YOUR_API_KEY --duration 15
-
-# Specify ALSA device
-python3 detect_song.py --api-key YOUR_API_KEY --device "hw:1,0"
-
-# Continuous monitoring mode (check every 30 seconds)
-python3 detect_song.py --api-key YOUR_API_KEY --continuous --interval 30
-```
-
-**Features:**
-- Records audio from ALSA at 44.1kHz, 16-bit stereo
-- Generates Chromaprint fingerprints
-- Queries AcoustID API for song identification
-- Displays artist, title, album, and MusicBrainz metadata
-- Continuous monitoring mode for real-time detection
-- Supports custom ALSA devices
-
-**Get an API key:** Register your application at https://acoustid.org/new-application
-
-See [ACOUSTID_README.md](ACOUSTID_README.md) for more information about the AcoustID API client.
-
 ## References
 
 - [SDL2 Documentation](https://wiki.libsdl.org/)
 - [PySDL2 Documentation](https://pysdl2.readthedocs.io/)
 - [SDL2 Installation Guide](./sdl2/README.md)
-- [AcoustID API Documentation](https://acoustid.org/webservice)
